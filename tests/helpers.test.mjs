@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  classifyCodexNativeReview,
   containsBlockingSeverity,
+  extractCodexPriority,
   extractClaudeOutcome,
   extractMarkerSha,
   isAcceptableClaudeComment,
+  isAcceptableCodexSummaryComment,
   isAcceptableNativeReview,
+  latestCodexNativeReviewResult,
   isTrustedReviewLogin,
   isTrustedAssociation
 } from "../scripts/ai-review-helpers.mjs";
@@ -32,6 +36,8 @@ test("Claude review markers are parsed", () => {
 test("blocking severity is backend aware", () => {
   assert.equal(containsBlockingSeverity("Found P1 issue", "codex"), true);
   assert.equal(containsBlockingSeverity("Found P3 issue", "codex"), false);
+  assert.equal(extractCodexPriority("Found P2 issue"), 2);
+  assert.equal(extractCodexPriority("No priority marker"), null);
   assert.equal(containsBlockingSeverity("Critical bug", "gemini"), true);
   assert.equal(containsBlockingSeverity("Medium note", "gemini"), false);
 });
@@ -64,6 +70,117 @@ test("native Codex review must be approved and current-head", () => {
     ),
     false
   );
+});
+
+test("Codex no-findings summary comment is accepted from trusted bot only", () => {
+  assert.equal(
+    isAcceptableCodexSummaryComment({
+      body: "Codex Review: Didn't find any major issues for abc123def4. Nice work!",
+      user: { login: "chatgpt-codex-connector[bot]" }
+    }, "abc123def456"),
+    true
+  );
+
+  assert.equal(
+    isAcceptableCodexSummaryComment({
+      body: "Codex Review: Found a P1 issue.",
+      user: { login: "chatgpt-codex-connector[bot]" }
+    }, "abc123def456"),
+    false
+  );
+
+  assert.equal(
+    isAcceptableCodexSummaryComment({
+      body: "Codex Review: Didn't find any major issues.",
+      user: { login: "chatgpt-codex-connector[bot]" }
+    }, "abc123def456"),
+    false
+  );
+
+  assert.equal(
+    isAcceptableCodexSummaryComment({
+      body: "Codex Review: Didn't find any major issues.",
+      user: { login: "codex-fan-99" }
+    }, "abc123def456"),
+    false
+  );
+});
+
+test("Codex commented reviews are classified by inline priorities", () => {
+  const review = {
+    id: 123,
+    commit_id: "abc",
+    state: "COMMENTED",
+    user: { login: "chatgpt-codex-connector[bot]" }
+  };
+
+  assert.equal(classifyCodexNativeReview(review, [], "abc"), "pass");
+  assert.equal(classifyCodexNativeReview(review, [
+    {
+      pull_request_review_id: 123,
+      body: "![P3 Badge] advisory",
+      user: { login: "chatgpt-codex-connector[bot]" }
+    }
+  ], "abc"), "pass");
+  assert.equal(classifyCodexNativeReview(review, [
+    {
+      pull_request_review_id: 123,
+      body: "![P1 Badge] blocker",
+      user: { login: "chatgpt-codex-connector[bot]" }
+    }
+  ], "abc"), "fail");
+  assert.equal(classifyCodexNativeReview(review, [
+    {
+      pull_request_review_id: 123,
+      body: "untagged finding",
+      user: { login: "chatgpt-codex-connector[bot]" }
+    }
+  ], "abc"), "fail");
+  assert.equal(classifyCodexNativeReview({
+    ...review,
+    state: "APPROVED",
+    body: "Contains P1"
+  }, [], "abc"), "fail");
+  assert.equal(classifyCodexNativeReview(review, [
+    {
+      pull_request_review_id: 123,
+      body: "thanks",
+      user: { login: "repo-owner" }
+    },
+    {
+      pull_request_review_id: 123,
+      body: "![P3 Badge] advisory",
+      user: { login: "chatgpt-codex-connector[bot]" }
+    }
+  ], "abc"), "pass");
+  assert.equal(classifyCodexNativeReview(review, [], "new-head"), null);
+});
+
+test("latest Codex native review result wins for a head", () => {
+  const olderPass = {
+    id: 1,
+    commit_id: "abc",
+    state: "COMMENTED",
+    submitted_at: "2026-01-01T00:00:00Z",
+    user: { login: "chatgpt-codex-connector[bot]" }
+  };
+  const newerFail = {
+    id: 2,
+    commit_id: "abc",
+    state: "COMMENTED",
+    submitted_at: "2026-01-01T00:01:00Z",
+    user: { login: "chatgpt-codex-connector[bot]" }
+  };
+
+  assert.equal(latestCodexNativeReviewResult([olderPass, newerFail], [
+    {
+      pull_request_review_id: 2,
+      body: "![P1 Badge] blocker",
+      user: { login: "chatgpt-codex-connector[bot]" }
+    }
+  ], "abc"), "fail");
+
+  assert.equal(latestCodexNativeReviewResult([newerFail, olderPass], [], "different-head"), null);
 });
 
 test("review bot logins require exact trusted matches", () => {

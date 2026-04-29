@@ -2,7 +2,9 @@
 import {
   extractClaudeOutcome,
   isAcceptableClaudeComment,
-  isAcceptableNativeReview
+  isAcceptableCodexSummaryComment,
+  isAcceptableNativeReview,
+  latestCodexNativeReviewResult
 } from "./ai-review-helpers.mjs";
 import { readConfig } from "./shared.mjs";
 
@@ -51,6 +53,16 @@ async function request(path, options = {}) {
   return response.json();
 }
 
+async function listPaginated(path) {
+  const items = [];
+  const separator = path.includes("?") ? "&" : "?";
+  for (let page = 1; ; page += 1) {
+    const batch = await request(`${path}${separator}per_page=100&page=${page}`);
+    items.push(...batch);
+    if (batch.length < 100) return items;
+  }
+}
+
 async function createComment(body) {
   await request(`/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
     method: "POST",
@@ -75,12 +87,28 @@ async function maybePostTriggerComment() {
 
 async function fetchEvidence() {
   if (selectedAgent === "claude") {
-    const comments = await request(`/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`);
+    const comments = await listPaginated(`/repos/${owner}/${repo}/issues/${prNumber}/comments`);
     return comments.some((comment) => isAcceptableClaudeComment(comment, headSha, config));
   }
 
-  const reviews = await request(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews?per_page=100`);
-  return reviews.some((review) => isAcceptableNativeReview(review, selectedAgent, headSha, config));
+  const reviews = await listPaginated(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`);
+  if (selectedAgent === "codex") {
+    const reviewComments = await listPaginated(`/repos/${owner}/${repo}/pulls/${prNumber}/comments`);
+    const latestCodexResult = latestCodexNativeReviewResult(reviews, reviewComments, headSha, config);
+    if (latestCodexResult === "pass") return true;
+    if (latestCodexResult === "fail") return false;
+  }
+
+  if (reviews.some((review) => isAcceptableNativeReview(review, selectedAgent, headSha, config))) {
+    return true;
+  }
+
+  if (selectedAgent !== "codex") return false;
+
+  const comments = await listPaginated(`/repos/${owner}/${repo}/issues/${prNumber}/comments`);
+  return comments.some((comment) =>
+    isAcceptableCodexSummaryComment(comment, headSha, config)
+  );
 }
 
 await maybePostTriggerComment();
@@ -112,16 +140,24 @@ if (accepted) {
 const detail = lastError ? ` Last API error: ${lastError.message}` : "";
 const reviewHint = selectedAgent === "claude"
   ? "Claude must post AI_REVIEW_OUTCOME: pass for the current head SHA."
-  : `${selectedAgent} must provide an acceptable native review for the current head SHA.`;
+  : selectedAgent === "codex"
+    ? "Codex must provide an acceptable native review for the current head SHA or a fresh no-findings Codex Review summary comment."
+    : `${selectedAgent} must provide an acceptable native review for the current head SHA.`;
 
-await createComment([
+const failureComment = [
   "AI Review gate failed.",
   "",
   `- agent: ${selectedAgent}`,
   `- head SHA: ${headSha}`,
   `- expected: ${reviewHint}`,
   detail ? `- detail: ${detail}` : ""
-].filter(Boolean).join("\n"));
+].filter(Boolean).join("\n");
+
+try {
+  await createComment(failureComment);
+} catch (error) {
+  console.warn(`Could not post AI Review gate failure comment: ${error.message}`);
+}
 
 console.error(`AI Review gate failed for ${selectedAgent} on ${headSha}.${detail}`);
 process.exit(1);

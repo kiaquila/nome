@@ -47,6 +47,56 @@ export function containsBlockingSeverity(body, agent) {
   return false;
 }
 
+export function extractCodexPriority(body) {
+  const match = String(body || "").match(/\bP([0-3])\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+export function isAcceptableCodexSummaryComment(comment, headSha, config = {}) {
+  const body = String(comment?.body || "").trim();
+  const login = normalizeLogin(comment?.user?.login);
+  const shortSha = String(headSha || "").slice(0, 10);
+  return isTrustedReviewLogin(login, "codex", config) &&
+    /^Codex Review:/i.test(body) &&
+    Boolean(shortSha) &&
+    (body.includes(headSha) || body.includes(shortSha)) &&
+    /did(?:\s+not|\s*n['’]?t)\s+find\s+any\s+major\s+issues/i.test(body);
+}
+
+export function classifyCodexNativeReview(review, reviewComments = [], headSha, config = {}) {
+  if (!review) return null;
+  if (review.commit_id && headSha && review.commit_id !== headSha) return null;
+  const login = normalizeLogin(review.user?.login);
+  if (!isTrustedReviewLogin(login, "codex", config)) return null;
+  if (containsBlockingSeverity(review.body, "codex")) return "fail";
+
+  if (review.state === "APPROVED") return "pass";
+  if (review.state === "CHANGES_REQUESTED") return "fail";
+  if (review.state !== "COMMENTED") return null;
+
+  const commentsForReview = reviewComments.filter((comment) =>
+    comment.pull_request_review_id === review.id &&
+    isTrustedReviewLogin(comment.user?.login, "codex", config)
+  );
+  if (commentsForReview.length === 0) return "pass";
+
+  const priorities = commentsForReview.map((comment) => extractCodexPriority(comment.body));
+  if (priorities.some((priority) => priority === null)) return "fail";
+  return Math.min(...priorities) <= 2 ? "fail" : "pass";
+}
+
+export function latestCodexNativeReviewResult(reviews = [], reviewComments = [], headSha, config = {}) {
+  return reviews
+    .map((review) => ({
+      review,
+      result: classifyCodexNativeReview(review, reviewComments, headSha, config)
+    }))
+    .filter((entry) => entry.result !== null)
+    .sort((left, right) =>
+      Date.parse(right.review.submitted_at || "") - Date.parse(left.review.submitted_at || "")
+    )[0]?.result || null;
+}
+
 export function isAcceptableNativeReview(review, agent, headSha, config = {}) {
   if (!review) return false;
   if (review.commit_id && headSha && review.commit_id !== headSha) return false;
