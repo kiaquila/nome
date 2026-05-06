@@ -16,6 +16,8 @@ The installing agent inspects the target repository and captures the minimum con
 
 If important context is unknown, the agent writes `[NEEDS CLARIFICATION]` into the relevant document instead of inventing details.
 
+Choose the closest profile before copying files. Profiles may provide stack-specific product paths, local commands, required checks, and dependency-update ecosystems. For example, a Flutter profile should preserve an existing Flutter CI workflow and use that workflow's job names as required checks instead of assuming the default Node `baseline-checks` job exists.
+
 ## Phase 1: Repository Memory
 
 Install:
@@ -70,6 +72,10 @@ Install workflows:
 - AI Review
 - OSV Scan
 
+When a target repository already has a mature CI workflow, do not overwrite it. Keep the existing workflow, install the additional guard/review/security workflows, and set `.unicorn-hub/config.json` `requiredChecks` to the target's real CI job names plus the Unicorn guard and review jobs.
+
+Profiles can declare `excludeTemplates` to skip blueprint templates that conflict with the target stack. The `flutter-app` profile excludes the default Node `ci.yml`, so fresh Flutter targets are not handed a `baseline-checks` workflow that would never match their CI. `excludeTemplates` is enforced even under `--force`; the flag only refreshes templates the profile considers compatible.
+
 Set repository variables:
 
 - `AI_IMPLEMENTATION_AGENT`
@@ -87,7 +93,7 @@ AI_REVIEW_AGENT=codex
 After the workflows exist on the default branch, apply branch protection:
 
 - require pull requests
-- require `baseline-checks`, `guard`, and `AI Review`
+- require the contexts listed in `.unicorn-hub/config.json` (`requiredChecks`) — the generic profile ships `baseline-checks`, `guard`, `AI Review`, while stack-specific profiles such as `flutter-app` ship only `guard` and `AI Review` and expect the team to extend the list with the target's real CI job names
 - require branches to be up to date when appropriate
 - enforce admins
 - dismiss stale reviews
