@@ -18,7 +18,7 @@ function run(args, cwd = root) {
 test("bootstrap installs generic blueprint into a synthetic target", () => {
   const target = mkdtempSync(join(tmpdir(), "unicorn-bootstrap-"));
 
-  run([
+  const output = run([
     "scripts/bootstrap-repo.mjs",
     "--source",
     root,
@@ -29,6 +29,13 @@ test("bootstrap installs generic blueprint into a synthetic target", () => {
     "--project-name",
     "Synthetic App"
   ]);
+
+  const nextStepsBlock = output.split("\nNext:\n")[1] ?? "";
+  assert.notEqual(nextStepsBlock, "", "bootstrap output must contain a 'Next:' block");
+  assert.match(nextStepsBlock, /^1\. Review placeholders.*AGENTS\.md.*CLAUDE\.md.*docs_project\/.*\.unicorn-hub\/config\.json/m);
+  assert.match(nextStepsBlock, /^2\. .*CREATE-DOCS\.md/m);
+  assert.match(nextStepsBlock, /^3\. Create the first specs\/<feature-id>/m);
+  assert.match(nextStepsBlock, /^4\. Run the project preflight/m);
 
   for (const path of [
     "AGENTS.md",
@@ -47,6 +54,20 @@ test("bootstrap installs generic blueprint into a synthetic target", () => {
   const agents = readFileSync(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /Synthetic App/);
   assert.doesNotMatch(agents, /<PROJECT_NAME>/);
+  assert.match(agents, /first setup documentation interview/i);
+  assert.match(agents, /CREATE-DOCS\.md/);
+
+  const readme = readFileSync(join(target, "README.md"), "utf8");
+  assert.match(readme, /First Setup After Bootstrap/);
+  assert.match(readme, /CREATE-DOCS\.md/);
+
+  const claude = readFileSync(join(target, "CLAUDE.md"), "utf8");
+  assert.match(claude, /## First Setup/);
+  assert.match(claude, /CREATE-DOCS\.md/);
+
+  const docsReadme = readFileSync(join(target, "docs_project/README.md"), "utf8");
+  assert.match(docsReadme, /## First Setup/);
+  assert.match(docsReadme, /specs\/<feature-id>/);
 
   const config = JSON.parse(readFileSync(join(target, ".unicorn-hub/config.json"), "utf8"));
   assert.equal(config.profile, "generic");
@@ -57,6 +78,61 @@ test("bootstrap installs generic blueprint into a synthetic target", () => {
 
   const prTemplate = readFileSync(join(target, ".github/pull_request_template.md"), "utf8");
   assert.match(prTemplate, /SENAR Done Gate/);
+});
+
+test("bootstrap --dry-run announces a dry run instead of next steps", () => {
+  const target = mkdtempSync(join(tmpdir(), "unicorn-bootstrap-dry-"));
+
+  const output = run([
+    "scripts/bootstrap-repo.mjs",
+    "--source",
+    root,
+    "--target",
+    target,
+    "--profile",
+    "generic",
+    "--project-name",
+    "Synthetic Dry",
+    "--dry-run"
+  ]);
+
+  assert.match(output, /Dry run for Unicorn Hub blueprint profile 'generic'/);
+  assert.match(output, /Re-run without --dry-run to apply\./);
+  assert.doesNotMatch(output, /\nNext:\n/);
+  assert.equal(existsSync(join(target, "AGENTS.md")), false, "dry run must not write files");
+});
+
+test("bootstrap idempotent re-run reports nothing new to review", () => {
+  const target = mkdtempSync(join(tmpdir(), "unicorn-bootstrap-rerun-"));
+
+  run([
+    "scripts/bootstrap-repo.mjs",
+    "--source",
+    root,
+    "--target",
+    target,
+    "--profile",
+    "generic",
+    "--project-name",
+    "Synthetic Rerun"
+  ]);
+
+  const output = run([
+    "scripts/bootstrap-repo.mjs",
+    "--source",
+    root,
+    "--target",
+    target,
+    "--profile",
+    "generic",
+    "--project-name",
+    "Synthetic Rerun"
+  ]);
+
+  const nextStepsBlock = output.split("\nNext:\n")[1] ?? "";
+  assert.match(nextStepsBlock, /^1\. No new files were written\. Existing/m);
+  assert.match(nextStepsBlock, /not compared to the blueprint/);
+  assert.match(nextStepsBlock, /--force/);
 });
 
 test("bootstrapped target passes baseline check", () => {
