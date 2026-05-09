@@ -43,7 +43,7 @@ AI_REVIEW_AGENT=codex
 
 Supported review backends:
 
-- `codex`: native GitHub PR review with `P0`-`P3` severity markers, or a no-findings `Codex Review:` summary comment that names the current head
+- `codex`: native GitHub PR review with `P0`-`P3` severity markers, or a no-findings `Codex Review:` summary comment bound to a trusted current-head review-request marker
 - `claude`: top-level comment with `AI_REVIEW_OUTCOME: pass|advisory|block`
 - `gemini`: native GitHub PR review from the configured app
 
@@ -58,6 +58,19 @@ Only comments from these GitHub author associations should route AI commands:
 - `COLLABORATOR`
 
 Untrusted comments must not move review boundaries or satisfy gates.
+
+Trusted review comments create an `AI_REVIEW_REQUEST_ID` marker for the PR head
+SHA that was current when the comment was posted. Review evidence for Codex must
+be submitted at or after the trusted source trigger time recorded in the marker
+and still match the latest GitHub PR head.
+
+Bot-authored comments cannot start the policy workflow, so the administrative
+trigger comment that `AI Review` posts in `trigger_mode=comment` does not
+recurse. The bot guard lives in both the workflow `if:` and `scripts/ai-command-policy.mjs`.
+
+Downstream repos that bootstrapped before this contract shipped must re-run
+`node scripts/bootstrap-repo.mjs --force` (or copy `scripts/ai-command-policy.mjs`
+into place) before the new `AI Command Policy` workflow runs successfully.
 
 ## Completion Contract
 
