@@ -53,6 +53,8 @@ const testFiles = walkFiles(blueprintRoot, {
 
 run(["scripts/check-feature-memory.mjs", "--worktree"], "Feature memory check");
 run(["scripts/check-repo-baseline.mjs"], "Repository baseline check");
+run(["scripts/check-context-budget.mjs", "--local-preflight"], "Context budget committed check");
+run(["scripts/check-context-budget.mjs", "--worktree"], "Context budget worktree check");
 run(["scripts/sync-workflows.mjs", "--check"], "Workflow sync check");
 syntaxCheck();
 run(["scripts/sanitize-blueprint.mjs"], "Sanitizer check");
