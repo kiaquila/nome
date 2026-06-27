@@ -23,7 +23,9 @@ function git(commandArgs, options = {}) {
 
 function changedFiles() {
   if (inspectWorktree) {
-    return git(["ls-files", "--modified", "--others", "--exclude-standard"]).split("\n").filter(Boolean);
+    const staged = git(["diff", "--cached", "--name-only"]).split("\n").filter(Boolean);
+    const unstagedAndUntracked = git(["ls-files", "--modified", "--others", "--exclude-standard"]).split("\n").filter(Boolean);
+    return [...new Set([...staged, ...unstagedAndUntracked])].sort();
   }
   return git(["diff", "--name-only", baseRef, headRef]).split("\n").filter(Boolean);
 }

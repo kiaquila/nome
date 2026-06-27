@@ -36,7 +36,7 @@ const title = args.title || `[agent] ${branch.replace(/^[^/]+\//, "").replaceAll
 const body = [
   "## Summary",
   "",
-  "- Installs or updates the portable multi-agent development workflow.",
+  "- Updates the Nome Telegram assistant repository.",
   "",
   "## Validation",
   "",
@@ -44,7 +44,7 @@ const body = [
   ""
 ].join("\n");
 
-const bodyFile = join(tmpdir(), `unicorn-pr-${Date.now()}.md`);
+const bodyFile = join(tmpdir(), `nome-pr-${Date.now()}.md`);
 writeFileSync(bodyFile, body);
 
 try {

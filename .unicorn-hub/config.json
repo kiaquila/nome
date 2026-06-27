@@ -1,12 +1,37 @@
 {
-  "docsDir": "docs",
+  "docsDir": "docs_project",
   "specsDir": "specs",
-  "productPaths": ["docs/", "templates/", "scripts/", "profiles/", "tests/"],
+  "productPaths": [
+    "README.md",
+    ".github/",
+    ".unicorn-hub/config.json",
+    "docs_project/",
+    "specs/",
+    ".specify/",
+    ".env.example",
+    "scripts/",
+    "src/",
+    "bot/",
+    "handlers/",
+    "adapters/",
+    "package.json",
+    "pyproject.toml"
+  ],
+  "commands": {
+    "preflight": "pnpm run preflight",
+    "check:repo": "pnpm run check:repo",
+    "check:feature-memory": "pnpm run check:feature-memory",
+    "check:context": "pnpm run check:context"
+  },
   "requiredChecks": ["baseline-checks", "guard", "AI Review"],
   "reviewAgents": ["codex", "claude", "gemini"],
   "trustedReviewLogins": [],
   "trustedReviewLoginsByAgent": {},
   "defaultImplementationAgent": "claude",
   "defaultReviewAgent": "codex",
-  "blueprint": true
+  "defaultBaseBranch": "main",
+  "contextBudget": {
+    "maxAgentLines": 60,
+    "alwaysOnFiles": ["AGENTS.md", "CLAUDE.md"]
+  }
 }
