@@ -236,9 +236,18 @@ class SQLiteStorage:
                 ON CONFLICT(business_connection_id, chat_id) DO UPDATE SET
                   chat_username = excluded.chat_username,
                   chat_display = excluded.chat_display,
-                  last_inbound_at = excluded.last_inbound_at,
+                  last_inbound_at = CASE
+                    WHEN chat_states.last_inbound_at IS NULL
+                      OR excluded.last_inbound_at > chat_states.last_inbound_at
+                    THEN excluded.last_inbound_at
+                    ELSE chat_states.last_inbound_at
+                  END,
                   unread_count = excluded.unread_count,
-                  updated_at = excluded.updated_at
+                  updated_at = CASE
+                    WHEN excluded.updated_at > chat_states.updated_at
+                    THEN excluded.updated_at
+                    ELSE chat_states.updated_at
+                  END
                 """,
                 (
                     business_connection_id,
@@ -274,8 +283,11 @@ class SQLiteStorage:
                   claim_token = NULL,
                   claim_expires_at = NULL,
                   last_error = NULL
-                WHERE pending_replies.claim_expires_at IS NULL
-                   OR pending_replies.claim_expires_at <= ?
+                WHERE (
+                    pending_replies.claim_expires_at IS NULL
+                    OR pending_replies.claim_expires_at <= ?
+                  )
+                  AND excluded.due_at >= pending_replies.due_at
                 """,
                 (
                     business_connection_id,
@@ -313,9 +325,23 @@ class SQLiteStorage:
                 ON CONFLICT(business_connection_id, chat_id) DO UPDATE SET
                   chat_username = excluded.chat_username,
                   chat_display = excluded.chat_display,
-                  last_owner_reply_at = excluded.last_owner_reply_at,
-                  unread_count = 0,
-                  updated_at = excluded.updated_at
+                  last_owner_reply_at = CASE
+                    WHEN chat_states.last_owner_reply_at IS NULL
+                      OR excluded.last_owner_reply_at > chat_states.last_owner_reply_at
+                    THEN excluded.last_owner_reply_at
+                    ELSE chat_states.last_owner_reply_at
+                  END,
+                  unread_count = CASE
+                    WHEN chat_states.last_inbound_at IS NULL
+                      OR excluded.last_owner_reply_at >= chat_states.last_inbound_at
+                    THEN 0
+                    ELSE chat_states.unread_count
+                  END,
+                  updated_at = CASE
+                    WHEN excluded.updated_at > chat_states.updated_at
+                    THEN excluded.updated_at
+                    ELSE chat_states.updated_at
+                  END
                 """,
                 (business_connection_id, chat_id, chat_username, chat_display, now, now),
             )
@@ -323,8 +349,18 @@ class SQLiteStorage:
                 """
                 DELETE FROM pending_replies
                 WHERE business_connection_id = ? AND chat_id = ?
+                  AND EXISTS (
+                    SELECT 1
+                    FROM chat_states
+                    WHERE business_connection_id = ?
+                      AND chat_id = ?
+                      AND (
+                        last_inbound_at IS NULL
+                        OR last_inbound_at <= ?
+                      )
+                  )
                 """,
-                (business_connection_id, chat_id),
+                (business_connection_id, chat_id, business_connection_id, chat_id, now),
             )
 
     def cancel_pending_reply(self, *, business_connection_id: str, chat_id: int) -> None:

@@ -155,6 +155,68 @@ async def test_same_second_inbound_after_owner_reply_can_schedule_reply(
 
 
 @pytest.mark.asyncio
+async def test_older_inbound_does_not_move_pending_reply_earlier(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, _telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(
+        _inbound_update(message_id=20, date=1_300),
+        now=2_000,
+    )
+    await update_handler.handle_update(
+        _inbound_update(message_id=19, date=1_000),
+        now=2_001,
+    )
+
+    assert storage.due_replies(now=1_599) == []
+    due = storage.due_replies(now=1_600)
+    assert len(due) == 1
+    assert due[0].inbound_message_id == 20
+
+
+@pytest.mark.asyncio
+async def test_older_owner_reply_does_not_move_owner_timestamp_back(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, _telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(
+        _owner_business_reply(message_id=30, date=1_200),
+        now=2_000,
+    )
+    await update_handler.handle_update(
+        _owner_business_reply(message_id=29, date=1_100),
+        now=2_001,
+    )
+    await update_handler.handle_update(
+        _inbound_update(message_id=31, date=1_150),
+        now=2_002,
+    )
+
+    assert storage.due_replies(now=2_000) == []
+
+
+@pytest.mark.asyncio
+async def test_older_owner_reply_does_not_cancel_newer_pending_reply(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, _telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(
+        _inbound_update(message_id=31, date=1_300),
+        now=2_000,
+    )
+    await update_handler.handle_update(
+        _owner_business_reply(message_id=30, date=1_200),
+        now=2_001,
+    )
+
+    assert storage.due_replies(now=1_599) == []
+    assert storage.due_replies(now=1_600)
+
+
+@pytest.mark.asyncio
 async def test_owner_reply_after_due_lookup_prevents_stale_away_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
     monkeypatch: pytest.MonkeyPatch,
