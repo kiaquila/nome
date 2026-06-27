@@ -15,3 +15,5 @@
 - [x] T011 Address Codex review findings: runtime selected-chat allowlist,
   disabled/rightless connection pending cancellation, and retryable Bot API HTTP
   failures.
+- [x] T012 Address second Codex review findings: fail closed without webhook
+  secret and ignore Telegram Business echoes from Nome itself.

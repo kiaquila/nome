@@ -122,6 +122,10 @@ class UpdateHandler:
             LOGGER.info("Ignoring business message for non-selected private chat.")
             return
 
+        if message.get("sender_business_bot"):
+            LOGGER.info("Ignoring business echo sent by the connected bot.")
+            return
+
         sender = _dict(message.get("from"))
         if self._is_owner_sender(sender, connection):
             self.storage.record_owner_reply(

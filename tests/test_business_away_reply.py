@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 import pytest
 
-from nome.config import Settings
+from nome.config import ConfigurationError, Settings
 from nome.handlers import UpdateHandler
 from nome.storage import SQLiteStorage
 from nome.telegram_api import TelegramAPIError, TelegramBotAPI
@@ -114,6 +114,20 @@ async def test_owner_reply_cancels_pending_away_reply(
 
 
 @pytest.mark.asyncio
+async def test_business_echo_from_nome_does_not_cancel_pending_reply(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+    await update_handler.handle_update(_bot_business_echo(message_id=12), now=1_100)
+
+    assert storage.due_replies(now=1_300)
+    assert await update_handler.process_due_replies(now=1_300) == 1
+    assert telegram.sent
+
+
+@pytest.mark.asyncio
 async def test_ignores_business_messages_outside_selected_chat_allowlist(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -182,6 +196,14 @@ async def test_telegram_api_wraps_http_failures_as_retryable_errors() -> None:
             await telegram.send_message(chat_id=200, text="hello", business_connection_id="conn-1")
 
 
+def test_from_env_requires_webhook_secret_when_running_bot(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET_TOKEN", raising=False)
+
+    with pytest.raises(ConfigurationError):
+        Settings.from_env()
+
+
 def _connection_update(*, can_reply: bool = True) -> dict[str, Any]:
     return {
         "business_connection": {
@@ -226,3 +248,9 @@ def _owner_business_reply(*, message_id: int) -> dict[str, Any]:
             "text": "manual reply",
         }
     }
+
+
+def _bot_business_echo(*, message_id: int) -> dict[str, Any]:
+    update = _owner_business_reply(message_id=message_id)
+    update["business_message"]["sender_business_bot"] = {"id": 500, "username": "nome_ai_bot"}
+    return update

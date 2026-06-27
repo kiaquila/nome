@@ -56,10 +56,13 @@ class Settings:
         bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         if require_bot_token and not bot_token:
             raise ConfigurationError("TELEGRAM_BOT_TOKEN is required.")
+        webhook_secret_token = os.getenv("TELEGRAM_WEBHOOK_SECRET_TOKEN")
+        if require_bot_token and not webhook_secret_token:
+            raise ConfigurationError("TELEGRAM_WEBHOOK_SECRET_TOKEN is required.")
 
         return cls(
             bot_token=bot_token,
-            webhook_secret_token=os.getenv("TELEGRAM_WEBHOOK_SECRET_TOKEN"),
+            webhook_secret_token=webhook_secret_token,
             database_path=Path(os.getenv("NOME_DATABASE_PATH", "data/nome.sqlite3")),
             auto_reply_delay_seconds=int(os.getenv("NOME_AUTO_REPLY_DELAY_SECONDS", "300")),
             auto_reply_cooldown_hours=int(os.getenv("NOME_AUTO_REPLY_COOLDOWN_HOURS", "12")),
