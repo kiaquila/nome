@@ -223,7 +223,7 @@ class SQLiteStorage:
                 _optional_int(existing["last_owner_reply_at"]) if existing else None
             )
 
-            if last_owner_reply_at is not None and now <= last_owner_reply_at:
+            if last_owner_reply_at is not None and now < last_owner_reply_at:
                 return ScheduleResult(scheduled=False, due_at=None)
 
             connection.execute(
