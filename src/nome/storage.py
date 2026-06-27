@@ -252,7 +252,7 @@ class SQLiteStorage:
                     cooldown_until=last_auto_reply_at + cooldown_seconds,
                 )
 
-            connection.execute(
+            pending_cursor = connection.execute(
                 """
                 INSERT INTO pending_replies (
                   business_connection_id, chat_id, chat_username, chat_display,
@@ -268,6 +268,8 @@ class SQLiteStorage:
                   claim_token = NULL,
                   claim_expires_at = NULL,
                   last_error = NULL
+                WHERE pending_replies.claim_expires_at IS NULL
+                   OR pending_replies.claim_expires_at <= ?
                 """,
                 (
                     business_connection_id,
@@ -278,8 +280,11 @@ class SQLiteStorage:
                     due_at,
                     now,
                     now,
+                    now,
                 ),
             )
+        if pending_cursor.rowcount == 0:
+            return ScheduleResult(scheduled=False, due_at=None)
         return ScheduleResult(scheduled=True, due_at=due_at)
 
     def record_owner_reply(

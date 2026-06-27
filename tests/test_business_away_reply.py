@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -172,6 +173,24 @@ async def test_ignores_business_messages_outside_selected_chat_allowlist(
 
 
 @pytest.mark.asyncio
+async def test_pending_reply_rechecks_chat_allowlist_before_sending(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+    restricted_handler = UpdateHandler(
+        settings=replace(update_handler.settings, setup_chat_usernames=("AlexOxitocin",)),
+        storage=storage,
+        telegram=telegram,  # type: ignore[arg-type]
+    )
+
+    assert await restricted_handler.process_due_replies(now=1_300) == 0
+    assert storage.due_replies(now=1_300) == []
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
 async def test_connection_losing_reply_rights_cancels_pending_away_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -283,6 +302,41 @@ def test_claimed_reply_stays_durable_until_lease_expires(
     assert claimed.claim_token is not None
     assert storage.due_replies(now=1_359) == []
     assert storage.due_replies(now=1_361)
+
+
+def test_active_claim_is_not_overwritten_by_new_inbound(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    _update_handler, storage, _telegram = handler
+    storage.record_inbound(
+        business_connection_id="conn-1",
+        chat_id=200,
+        chat_username="chapppp",
+        chat_display="Private",
+        inbound_message_id=11,
+        now=1_000,
+        delay_seconds=300,
+        cooldown_seconds=43_200,
+    )
+    pending = storage.due_replies(now=1_300)[0]
+    claimed = storage.claim_due_reply(pending=pending, now=1_300, lease_seconds=60)
+    assert claimed is not None
+
+    result = storage.record_inbound(
+        business_connection_id="conn-1",
+        chat_id=200,
+        chat_username="chapppp",
+        chat_display="Private",
+        inbound_message_id=12,
+        now=1_310,
+        delay_seconds=300,
+        cooldown_seconds=43_200,
+    )
+
+    assert not result.scheduled
+    assert storage.mark_reply_sent(pending=claimed, sent_message_id=1, now=1_320)
+    assert storage.due_replies(now=2_000) == []
+    assert storage.recent_reply_events(since=0)[0].inbound_message_id == 11
 
 
 def _connection_update(*, can_reply: bool = True) -> dict[str, Any]:

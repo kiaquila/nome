@@ -55,6 +55,19 @@ class UpdateHandler:
                 )
                 continue
 
+            if not self._is_allowed_business_chat(
+                ChatIdentity(
+                    chat_id=pending.chat_id,
+                    username=pending.chat_username,
+                    display=pending.chat_display,
+                )
+            ):
+                self.storage.cancel_pending_reply(
+                    business_connection_id=pending.business_connection_id,
+                    chat_id=pending.chat_id,
+                )
+                continue
+
             claimed = self.storage.claim_due_reply(pending=pending, now=current_time)
             if claimed is None:
                 continue
