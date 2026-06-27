@@ -1,23 +1,23 @@
-# CLAUDE.md — Unicorn Hub
+# CLAUDE.md - Nome
 
-Claude Code may implement blueprint changes in this repository.
+Claude Code may implement changes in this repository when asked by the owner.
 
-## Read Before Coding
+## Operating Context
 
-1. @AGENTS.md
-2. @README.md
-3. @docs/bootstrap-flow.md
-4. @docs/portability-and-sanitization.md
-5. relevant scripts/templates/tests
+Nome is a private Telegram personal-assistant bot. Optimize for trustworthy
+personal workflows, clear boundaries, and safe handling of private data.
 
-## Operating Rules
+## Development Rules
 
-- Keep the blueprint portable and generic.
-- Never copy source-project specs, private URLs, domains, credentials, cloud identifiers, or personal absolute paths.
-- Update tests when changing sanitizer, bootstrap behavior, scripts, or required file structure.
-- Run `pnpm run preflight` before pushing.
-- Keep examples synthetic.
+- Read the active feature memory before code changes.
+- Keep product behavior in small Telegram handlers plus injected ports.
+- Do not hard-code secrets, user ids, chat ids, API keys, or production URLs.
+- Avoid broad automation that can send messages, schedule events, or mutate
+  external services without explicit user intent.
+- Update `docs_project/` when architecture or product decisions change.
+- Run `pnpm run preflight` before publishing a PR.
 
-## Review Focus
+## Review Notes
 
-Prioritize portability leaks, unsafe GitHub gate behavior, broken bootstrap output, missing checks, and docs that no longer match scripts.
+Call out privacy risk, unsafe side effects, missing allowlist checks, weak
+validation, or ambiguous assistant behavior before style issues.

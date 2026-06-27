@@ -26,7 +26,7 @@ export function createAiReviewRequestMarkerBody({
   return [
     `AI review request recorded for \`${String(headSha || "").slice(0, 10)}\`.`,
     "",
-    "<!-- unicorn-hub:ai-review-request",
+    "<!-- nome:ai-review-request",
     `AI_REVIEW_REQUEST_ID: ${requestId}`,
     `AI_REVIEW_AGENT: ${String(agent || "").trim().toLowerCase()}`,
     `AI_REVIEW_SHA: ${headSha}`,
@@ -39,7 +39,7 @@ export function createAiReviewRequestMarkerBody({
 
 export function extractAiReviewRequestMarker(body) {
   const text = String(body || "");
-  if (!text.includes("unicorn-hub:ai-review-request")) return null;
+  if (!text.includes("nome:ai-review-request")) return null;
 
   const field = (name) => text.match(new RegExp(`^${name}:\\s*(.+?)\\s*$`, "im"))?.[1]?.trim() || null;
   const requestId = field("AI_REVIEW_REQUEST_ID");

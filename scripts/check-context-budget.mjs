@@ -46,9 +46,6 @@ function defaultAlwaysOnFiles() {
   if (Array.isArray(config.contextBudget?.alwaysOnFiles)) {
     return config.contextBudget.alwaysOnFiles;
   }
-  if (config.blueprint) {
-    return ["AGENTS.md", "CLAUDE.md", "templates/AGENTS.md", "templates/CLAUDE.md"];
-  }
   return ["AGENTS.md", "CLAUDE.md"];
 }
 
@@ -266,8 +263,36 @@ function readTextFromSource(path, source) {
   return null;
 }
 
-function validateFeatureMemory(featureIds, source = WORKTREE_SOURCE) {
+function existsInSource(path, source) {
+  if (source.type === "worktree") return existsSync(join(repoRoot, path));
+  if (source.type === "index") {
+    try {
+      const output = execFileSync("git", ["ls-files", "--stage", "--", path, `${path}/`], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"]
+      }).trim();
+      return output.length > 0;
+    } catch {
+      return false;
+    }
+  }
+  try {
+    execFileSync("git", ["cat-file", "-e", `${source.ref}:${path}`], {
+      cwd: repoRoot,
+      stdio: "ignore"
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateFeatureMemory(featureIds, source = WORKTREE_SOURCE, options = {}) {
   for (const featureId of featureIds) {
+    const featureRoot = `${specsDir}/${featureId}`;
+    if (!options.strict && !existsInSource(featureRoot, source)) continue;
+
     const specPath = `${specsDir}/${featureId}/spec.md`;
     const planPath = `${specsDir}/${featureId}/plan.md`;
     const spec = readTextFromSource(specPath, source);
@@ -290,7 +315,7 @@ function validateFeatureMemory(featureIds, source = WORKTREE_SOURCE) {
 
 function validateSelectedFeatureMemory(fileContexts, featureIds) {
   if (explicitFeatureIds().length || args["all-specs"]) {
-    validateFeatureMemory(featureIds, WORKTREE_SOURCE);
+    validateFeatureMemory(featureIds, WORKTREE_SOURCE, { strict: true });
     return;
   }
 

@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const scriptDir = dirname(fileURLToPath(import.meta.url));
-export const blueprintRoot = resolve(scriptDir, "..");
+export const repositoryRoot = resolve(scriptDir, "..");
 
 export function parseArgs(argv = process.argv.slice(2)) {
   const args = {};

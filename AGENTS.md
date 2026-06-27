@@ -1,33 +1,33 @@
-# AGENTS.md — Unicorn Hub
+# AGENTS.md - Nome
 
-Unicorn Hub is a portable multi-agent development blueprint. It must stay generic, installable, and free of source-project residue.
+Nome is a private Telegram personal-assistant bot. Build it as a
+privacy-sensitive product, not as a generic workflow template.
 
 ## Read Order
 
-1. `README.md`
-2. `docs/overview.md`
-3. `docs/bootstrap-flow.md`
-4. `docs/multi-agent-workflow.md`
-5. `docs/github-ci-and-branch-protection.md`
-6. `docs/senar-mapping.md`
-7. `docs/portability-and-sanitization.md`
-8. relevant files under `templates/`, `scripts/`, and `profiles/`
+1. Active `specs/<feature-id>/spec.md`
+2. Active `specs/<feature-id>/plan.md`
+3. Active `specs/<feature-id>/tasks.md`
+4. `docs_project/project/product-brief.md`
+5. `docs_project/project/architecture.md`
+6. `.unicorn-hub/config.json` for paths, commands, and checks
 
 ## Rules
 
-- This repository is a distilled practice template, not a product archive.
-- Do not add real secrets, private repository URLs, real deployment identifiers, personal paths, or source-project product details.
-- Templates must use placeholders such as `<PROJECT_NAME>` and neutral synthetic examples.
-- Scripts must be configurable through `.unicorn-hub/config.json`.
-- Run `pnpm run preflight` before publishing changes.
-- If changing install behavior, update docs and tests in the same PR.
+- Use one branch, one worktree, and one pull request per meaningful change.
+- Product changes must include one complete spec folder with `spec.md`, `plan.md`,
+  and `tasks.md`.
+- Treat Telegram tokens, user ids, chat ids, message text, and assistant memory as
+  private data.
+- Never commit real secrets, production identifiers, exported chats, or personal
+  paths.
+- Keep Telegram handlers thin; put side effects behind injected ports/adapters.
+- Prefer explicit allowlists and reversible actions over broad automation.
+- Run `pnpm run preflight` before pushing unless the user explicitly scopes the
+  work to analysis only.
 
-## Completion Contract
+## Completion
 
-A change is complete only when:
-
-- sanitizer passes
-- baseline check passes
-- tests pass
-- generated examples remain synthetic
-- no project-specific residue appears in tracked text files
+A change is complete when the spec acceptance criteria have evidence, local
+preflight passes or the failure is explained, and the PR has no blocking review
+findings.
