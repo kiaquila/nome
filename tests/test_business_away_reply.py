@@ -116,6 +116,33 @@ async def test_owner_reply_cancels_pending_away_reply(
 
 
 @pytest.mark.asyncio
+async def test_owner_reply_after_due_lookup_prevents_stale_away_reply(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+    original_due_replies = storage.due_replies
+
+    def due_replies_with_owner_reply(*, now: int, limit: int = 25) -> list[Any]:
+        due = original_due_replies(now=now, limit=limit)
+        storage.record_owner_reply(
+            business_connection_id="conn-1",
+            chat_id=200,
+            chat_username="chapppp",
+            chat_display="Private",
+            now=now,
+        )
+        return due
+
+    monkeypatch.setattr(storage, "due_replies", due_replies_with_owner_reply)
+
+    assert await update_handler.process_due_replies(now=1_300) == 0
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
 async def test_business_echo_from_nome_does_not_cancel_pending_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:

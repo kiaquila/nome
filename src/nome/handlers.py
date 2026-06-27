@@ -55,6 +55,9 @@ class UpdateHandler:
                 )
                 continue
 
+            if not self.storage.claim_due_reply(pending=pending, now=current_time):
+                continue
+
             try:
                 sent_message_id = await self.telegram.send_message(
                     chat_id=pending.chat_id,

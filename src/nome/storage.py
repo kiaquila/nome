@@ -344,6 +344,27 @@ class SQLiteStorage:
             for row in rows
         ]
 
+    def claim_due_reply(self, *, pending: PendingReply, now: int) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM pending_replies
+                WHERE business_connection_id = ?
+                  AND chat_id = ?
+                  AND inbound_message_id = ?
+                  AND due_at = ?
+                  AND due_at <= ?
+                """,
+                (
+                    pending.business_connection_id,
+                    pending.chat_id,
+                    pending.inbound_message_id,
+                    pending.due_at,
+                    now,
+                ),
+            )
+        return cursor.rowcount == 1
+
     def mark_reply_sent(
         self,
         *,
@@ -390,21 +411,41 @@ class SQLiteStorage:
         self, *, pending: PendingReply, now: int, retry_after_seconds: int
     ) -> None:
         with self._connect() as connection:
-            connection.execute(
+            chat_state = connection.execute(
                 """
-                UPDATE pending_replies
-                SET due_at = ?,
-                    updated_at = ?,
-                    failure_count = failure_count + 1,
-                    last_error = ?
+                SELECT last_owner_reply_at, unread_count
+                FROM chat_states
                 WHERE business_connection_id = ? AND chat_id = ?
                 """,
+                (pending.business_connection_id, pending.chat_id),
+            ).fetchone()
+            if chat_state is None or int(chat_state["unread_count"]) <= 0:
+                return
+
+            last_owner_reply_at = _optional_int(chat_state["last_owner_reply_at"])
+            if last_owner_reply_at is not None and last_owner_reply_at >= pending.due_at:
+                return
+
+            connection.execute(
+                """
+                INSERT INTO pending_replies (
+                  business_connection_id, chat_id, chat_username, chat_display,
+                  inbound_message_id, due_at, created_at, updated_at, failure_count,
+                  last_error
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                ON CONFLICT(business_connection_id, chat_id) DO NOTHING
+                """,
                 (
-                    now + retry_after_seconds,
-                    now,
-                    "telegram_send_failed",
                     pending.business_connection_id,
                     pending.chat_id,
+                    pending.chat_username,
+                    pending.chat_display,
+                    pending.inbound_message_id,
+                    now + retry_after_seconds,
+                    now,
+                    now,
+                    "telegram_send_failed",
                 ),
             )
 
