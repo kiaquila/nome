@@ -18,8 +18,9 @@
 
 - Kept `.unicorn-hub/config.json` as a compatibility path for the current guard
   scripts; this is workflow config, not product branding.
-- Added a one-time transition fallback in PR Guard for PR #1 because the trusted
-  default-branch context checker cannot handle deleted historical spec folders.
+- Added a one-time transition fallback in PR Guard for the reset base/head
+  transition because the trusted default-branch context checker cannot handle
+  deleted historical spec folders.
 - Extended AI Review's wait window after the first ready-for-review run failed
   before external Codex review evidence appeared.
 - Fixed staged-index existence checks in `check-context-budget.mjs` after Codex

@@ -36,8 +36,9 @@ feature memory and baseline checks before product code starts.
   path. Keep that path in this PR so existing default-branch guard scripts can
   validate the cleanup.
 - The default-branch context checker cannot validate deleted historical spec
-  folders. Add a one-time PR Guard fallback restricted to PR #1 and the initial
-  base SHA, then let future PRs use trusted default-branch validation only.
+  folders. Add a one-time PR Guard fallback restricted to the initial base SHA
+  and reset head branch, then let future PRs use trusted default-branch
+  validation only.
 - Codex review can take longer than the original 30-second gate window. Extend
   the AI Review wait window so a fresh trusted review request has time to
   produce evidence before the check fails.

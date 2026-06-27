@@ -64,18 +64,18 @@ jobs:
       - name: Validate context budget
         shell: bash
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          TRANSITION_PR_NUMBER: "1"
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           TRANSITION_BASE_REF: "224530c8e54f7b7e602c4b8b3f8b50b01bf02e40"
+          TRANSITION_HEAD_REF: "codex/adapt-nome-telegram-assistant"
         run: |
           if [ -f .gate-trusted/scripts/check-context-budget.mjs ]; then
             if node .gate-trusted/scripts/check-context-budget.mjs --target "$GITHUB_WORKSPACE" "$BASE_REF" "$HEAD_REF"; then
               exit 0
             fi
-            if [ "${PR_NUMBER:-}" = "$TRANSITION_PR_NUMBER" ] &&
-              [ "$BASE_REF" = "$TRANSITION_BASE_REF" ] &&
+            if [ "$BASE_REF" = "$TRANSITION_BASE_REF" ] &&
+              [ "${PR_HEAD_REF:-}" = "$TRANSITION_HEAD_REF" ] &&
               git diff --name-only "$BASE_REF" "$HEAD_REF" | grep -qx "scripts/check-context-budget.mjs"; then
-              echo "::warning::One-time transition: trusted context budget failed on PR #${TRANSITION_PR_NUMBER}; retrying with PR script."
+              echo "::warning::One-time product reset transition: trusted context budget failed; retrying with PR script."
               node scripts/check-context-budget.mjs --target "$GITHUB_WORKSPACE" "$BASE_REF" "$HEAD_REF"
             else
               exit 1

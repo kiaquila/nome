@@ -277,6 +277,7 @@ function existsInSource(path, source) {
       return false;
     }
   }
+  if (source.type !== "git" || !source.ref) return false;
   try {
     execFileSync("git", ["cat-file", "-e", `${source.ref}:${path}`], {
       cwd: repoRoot,
