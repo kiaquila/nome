@@ -12,3 +12,6 @@
 - [x] T008 Update docs and environment example.
 - [x] T009 Run local preflight.
 - [x] T010 Commit, push, open PR, and request Codex review.
+- [x] T011 Address Codex review findings: runtime selected-chat allowlist,
+  disabled/rightless connection pending cancellation, and retryable Bot API HTTP
+  failures.

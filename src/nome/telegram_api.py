@@ -52,8 +52,12 @@ class TelegramBotAPI:
         )
 
     async def _post(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = await self._client.post(self._url(method), json=payload)
-        response.raise_for_status()
+        try:
+            response = await self._client.post(self._url(method), json=payload)
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise TelegramAPIError("telegram_http_error") from error
+
         data = response.json()
         if not data.get("ok"):
             description = data.get("description", "Telegram API request failed")

@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from nome.config import Settings
 from nome.handlers import UpdateHandler
 from nome.storage import SQLiteStorage
+from nome.telegram_api import TelegramAPIError, TelegramBotAPI
 
 
 class FakeTelegram:
@@ -112,6 +114,39 @@ async def test_owner_reply_cancels_pending_away_reply(
 
 
 @pytest.mark.asyncio
+async def test_ignores_business_messages_outside_selected_chat_allowlist(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(
+        _inbound_update(message_id=11, username="unexpected"), now=1_000
+    )
+
+    assert storage.due_replies(now=1_400) == []
+    assert await update_handler.process_due_replies(now=1_400) == 0
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
+async def test_connection_losing_reply_rights_cancels_pending_away_reply(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+
+    await update_handler.handle_update(
+        _connection_update(can_reply=False),
+        now=1_100,
+    )
+
+    assert storage.due_replies(now=1_400) == []
+    assert await update_handler.process_due_replies(now=1_400) == 0
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
 async def test_status_command_is_owner_only(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -138,19 +173,28 @@ async def test_status_command_is_owner_only(
     assert "secret message" not in report
 
 
-def _connection_update() -> dict[str, Any]:
+@pytest.mark.asyncio
+async def test_telegram_api_wraps_http_failures_as_retryable_errors() -> None:
+    transport = httpx.MockTransport(lambda _request: httpx.Response(500, json={"ok": False}))
+    async with httpx.AsyncClient(transport=transport) as client:
+        telegram = TelegramBotAPI(bot_token="test-token", client=client)
+        with pytest.raises(TelegramAPIError):
+            await telegram.send_message(chat_id=200, text="hello", business_connection_id="conn-1")
+
+
+def _connection_update(*, can_reply: bool = True) -> dict[str, Any]:
     return {
         "business_connection": {
             "id": "conn-1",
             "user": {"id": 100, "username": "ks_aquila"},
             "user_chat_id": 900,
             "is_enabled": True,
-            "rights": {"can_reply": True},
+            "rights": {"can_reply": can_reply},
         }
     }
 
 
-def _inbound_update(*, message_id: int) -> dict[str, Any]:
+def _inbound_update(*, message_id: int, username: str = "chapppp") -> dict[str, Any]:
     return {
         "business_message": {
             "message_id": message_id,
@@ -158,10 +202,10 @@ def _inbound_update(*, message_id: int) -> dict[str, Any]:
             "chat": {
                 "id": 200,
                 "type": "private",
-                "username": "chapppp",
+                "username": username,
                 "first_name": "Private",
             },
-            "from": {"id": 200, "username": "chapppp"},
+            "from": {"id": 200, "username": username},
             "text": "secret message",
         }
     }

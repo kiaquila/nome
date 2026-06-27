@@ -40,6 +40,12 @@ def main() -> int:
 
 
 def _changed_files() -> list[str]:
+    files = set(_worktree_changed_files())
+    files.update(_branch_changed_files())
+    return sorted(files)
+
+
+def _worktree_changed_files() -> list[str]:
     result = subprocess.run(
         ["git", "status", "--short"],
         cwd=ROOT,
@@ -56,6 +62,19 @@ def _changed_files() -> list[str]:
             path = path.split(" -> ", maxsplit=1)[1]
         files.append(path)
     return files
+
+
+def _branch_changed_files() -> list[str]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "origin/main...HEAD"],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.splitlines() if line]
 
 
 if __name__ == "__main__":

@@ -84,6 +84,10 @@ class Settings:
     def normalized_owner_username(self) -> str:
         return normalize_username(self.owner_username)
 
+    @property
+    def normalized_setup_chat_usernames(self) -> frozenset[str]:
+        return frozenset(normalize_username(username) for username in self.setup_chat_usernames)
+
     def require_telethon(self) -> None:
         missing = [
             name

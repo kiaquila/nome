@@ -47,6 +47,14 @@ class UpdateHandler:
         current_time = utc_timestamp() if now is None else now
         sent_count = 0
         for pending in self.storage.due_replies(now=current_time):
+            connection = self.storage.get_business_connection(pending.business_connection_id)
+            if connection is None or not connection.is_enabled or not connection.can_reply:
+                self.storage.cancel_pending_reply(
+                    business_connection_id=pending.business_connection_id,
+                    chat_id=pending.chat_id,
+                )
+                continue
+
             try:
                 sent_message_id = await self.telegram.send_message(
                     chat_id=pending.chat_id,
@@ -91,6 +99,8 @@ class UpdateHandler:
             can_reply=can_reply,
             now=now,
         )
+        if not payload.get("is_enabled", True) or not can_reply:
+            self.storage.cancel_pending_for_connection(business_connection_id=str(payload["id"]))
 
     async def _handle_business_message(self, message: dict[str, Any], *, now: int) -> None:
         connection_id = _str_or_none(message.get("business_connection_id"))
@@ -108,6 +118,10 @@ class UpdateHandler:
             return
 
         chat_identity = _chat_identity(chat)
+        if not self._is_allowed_business_chat(chat_identity):
+            LOGGER.info("Ignoring business message for non-selected private chat.")
+            return
+
         sender = _dict(message.get("from"))
         if self._is_owner_sender(sender, connection):
             self.storage.record_owner_reply(
@@ -202,6 +216,11 @@ class UpdateHandler:
             normalize_username(_str_or_none(sender.get("username")))
             == self.settings.normalized_owner_username
         )
+
+    def _is_allowed_business_chat(self, chat: ChatIdentity) -> bool:
+        if chat.username is None:
+            return False
+        return chat.username in self.settings.normalized_setup_chat_usernames
 
 
 def _format_chat_lines(chats: list[Any]) -> list[str]:

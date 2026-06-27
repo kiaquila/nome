@@ -303,6 +303,23 @@ class SQLiteStorage:
                 (business_connection_id, chat_id),
             )
 
+    def cancel_pending_reply(self, *, business_connection_id: str, chat_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                DELETE FROM pending_replies
+                WHERE business_connection_id = ? AND chat_id = ?
+                """,
+                (business_connection_id, chat_id),
+            )
+
+    def cancel_pending_for_connection(self, *, business_connection_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM pending_replies WHERE business_connection_id = ?",
+                (business_connection_id,),
+            )
+
     def due_replies(self, *, now: int, limit: int = 25) -> list[PendingReply]:
         with self._connect() as connection:
             rows = connection.execute(
