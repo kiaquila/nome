@@ -81,6 +81,28 @@ async def test_ignores_business_connections_for_unknown_owner(
 
 
 @pytest.mark.asyncio
+async def test_accepts_legacy_top_level_can_reply_connection(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, _telegram = handler
+    await update_handler.handle_update(
+        {
+            "business_connection": {
+                "id": "conn-1",
+                "user": {"id": 100, "username": "ks_aquila"},
+                "user_chat_id": 900,
+                "is_enabled": True,
+                "can_reply": True,
+            }
+        },
+        now=1_000,
+    )
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+
+    assert storage.due_replies(now=1_300)
+
+
+@pytest.mark.asyncio
 async def test_sends_one_away_reply_after_delay_then_respects_cooldown(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:

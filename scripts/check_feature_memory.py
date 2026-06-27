@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PRODUCT_PREFIXES = (
+CONFIG_PATH = ROOT / ".unicorn-hub" / "config.json"
+DEFAULT_PRODUCT_PREFIXES = (
     "src/",
     "tests/",
     "scripts/",
@@ -20,7 +22,8 @@ PRODUCT_PREFIXES = (
 
 def main() -> int:
     files = _changed_files()
-    if not any(path.startswith(PRODUCT_PREFIXES) for path in files):
+    product_prefixes = _product_prefixes()
+    if not any(path.startswith(product_prefixes) for path in files):
         print("No product paths changed; feature-memory check passed.")
         return 0
 
@@ -43,6 +46,20 @@ def _changed_files() -> list[str]:
     files = set(_worktree_changed_files())
     files.update(_branch_changed_files())
     return sorted(files)
+
+
+def _product_prefixes() -> tuple[str, ...]:
+    try:
+        config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return DEFAULT_PRODUCT_PREFIXES
+
+    product_paths = config.get("productPaths")
+    if not isinstance(product_paths, list):
+        return DEFAULT_PRODUCT_PREFIXES
+
+    prefixes = tuple(path for path in product_paths if isinstance(path, str) and path)
+    return prefixes or DEFAULT_PRODUCT_PREFIXES
 
 
 def _worktree_changed_files() -> list[str]:

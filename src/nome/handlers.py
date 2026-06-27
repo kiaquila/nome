@@ -107,7 +107,12 @@ class UpdateHandler:
             return
 
         rights = _dict(payload.get("rights"))
-        can_reply = _flag(rights, "can_reply") or _flag(rights, "reply")
+        can_reply = _optional_flag(rights, "can_reply")
+        if can_reply is None:
+            can_reply = _optional_flag(rights, "reply")
+        if can_reply is None:
+            can_reply = _optional_flag(payload, "can_reply")
+        can_reply = can_reply is True
         self.storage.upsert_business_connection(
             connection_id=str(payload["id"]),
             owner_user_id=int(user["id"]),
@@ -308,5 +313,7 @@ def _optional_int(value: object) -> int | None:
     return None if value is None else int(cast(Any, value))
 
 
-def _flag(payload: dict[str, Any], name: str) -> bool:
+def _optional_flag(payload: dict[str, Any], name: str) -> bool | None:
+    if name not in payload:
+        return None
     return bool(payload.get(name))
