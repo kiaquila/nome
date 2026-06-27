@@ -261,6 +261,30 @@ def test_business_setup_builds_input_user_from_entity() -> None:
     assert input_user.access_hash == 456
 
 
+def test_claimed_reply_stays_durable_until_lease_expires(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    _update_handler, storage, _telegram = handler
+    storage.record_inbound(
+        business_connection_id="conn-1",
+        chat_id=200,
+        chat_username="chapppp",
+        chat_display="Private",
+        inbound_message_id=11,
+        now=1_000,
+        delay_seconds=300,
+        cooldown_seconds=43_200,
+    )
+    pending = storage.due_replies(now=1_300)[0]
+
+    claimed = storage.claim_due_reply(pending=pending, now=1_300, lease_seconds=60)
+
+    assert claimed is not None
+    assert claimed.claim_token is not None
+    assert storage.due_replies(now=1_359) == []
+    assert storage.due_replies(now=1_361)
+
+
 def _connection_update(*, can_reply: bool = True) -> dict[str, Any]:
     return {
         "business_connection": {

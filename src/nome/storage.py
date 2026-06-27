@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class PendingReply:
     chat_display: str
     inbound_message_id: int
     due_at: int
+    claim_token: str | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,15 @@ class SQLiteStorage:
                 );
                 """
             )
+            self._ensure_pending_reply_claim_columns(connection)
+
+    def _ensure_pending_reply_claim_columns(self, connection: sqlite3.Connection) -> None:
+        rows = connection.execute("PRAGMA table_info(pending_replies)").fetchall()
+        columns = {str(row["name"]) for row in rows}
+        if "claim_token" not in columns:
+            connection.execute("ALTER TABLE pending_replies ADD COLUMN claim_token TEXT")
+        if "claim_expires_at" not in columns:
+            connection.execute("ALTER TABLE pending_replies ADD COLUMN claim_expires_at INTEGER")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -254,6 +265,8 @@ class SQLiteStorage:
                   inbound_message_id = excluded.inbound_message_id,
                   due_at = excluded.due_at,
                   updated_at = excluded.updated_at,
+                  claim_token = NULL,
+                  claim_expires_at = NULL,
                   last_error = NULL
                 """,
                 (
@@ -327,10 +340,11 @@ class SQLiteStorage:
                 SELECT *
                 FROM pending_replies
                 WHERE due_at <= ?
+                  AND (claim_expires_at IS NULL OR claim_expires_at <= ?)
                 ORDER BY due_at ASC
                 LIMIT ?
                 """,
-                (now, limit),
+                (now, now, limit),
             ).fetchall()
         return [
             PendingReply(
@@ -340,11 +354,62 @@ class SQLiteStorage:
                 chat_display=str(row["chat_display"]),
                 inbound_message_id=int(row["inbound_message_id"]),
                 due_at=int(row["due_at"]),
+                claim_token=_optional_str(row["claim_token"]),
             )
             for row in rows
         ]
 
-    def claim_due_reply(self, *, pending: PendingReply, now: int) -> bool:
+    def claim_due_reply(
+        self, *, pending: PendingReply, now: int, lease_seconds: int = 300
+    ) -> PendingReply | None:
+        claim_token = uuid4().hex
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE pending_replies
+                SET claim_token = ?,
+                    claim_expires_at = ?,
+                    updated_at = ?
+                WHERE business_connection_id = ?
+                  AND chat_id = ?
+                  AND inbound_message_id = ?
+                  AND due_at = ?
+                  AND due_at <= ?
+                  AND (claim_expires_at IS NULL OR claim_expires_at <= ?)
+                """,
+                (
+                    claim_token,
+                    now + lease_seconds,
+                    now,
+                    pending.business_connection_id,
+                    pending.chat_id,
+                    pending.inbound_message_id,
+                    pending.due_at,
+                    now,
+                    now,
+                ),
+            )
+        if cursor.rowcount != 1:
+            return None
+        return PendingReply(
+            business_connection_id=pending.business_connection_id,
+            chat_id=pending.chat_id,
+            chat_username=pending.chat_username,
+            chat_display=pending.chat_display,
+            inbound_message_id=pending.inbound_message_id,
+            due_at=pending.due_at,
+            claim_token=claim_token,
+        )
+
+    def mark_reply_sent(
+        self,
+        *,
+        pending: PendingReply,
+        sent_message_id: int | None,
+        now: int,
+    ) -> bool:
+        if pending.claim_token is None:
+            return False
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -353,33 +418,18 @@ class SQLiteStorage:
                   AND chat_id = ?
                   AND inbound_message_id = ?
                   AND due_at = ?
-                  AND due_at <= ?
+                  AND claim_token = ?
                 """,
                 (
                     pending.business_connection_id,
                     pending.chat_id,
                     pending.inbound_message_id,
                     pending.due_at,
-                    now,
+                    pending.claim_token,
                 ),
             )
-        return cursor.rowcount == 1
-
-    def mark_reply_sent(
-        self,
-        *,
-        pending: PendingReply,
-        sent_message_id: int | None,
-        now: int,
-    ) -> None:
-        with self._connect() as connection:
-            connection.execute(
-                """
-                DELETE FROM pending_replies
-                WHERE business_connection_id = ? AND chat_id = ?
-                """,
-                (pending.business_connection_id, pending.chat_id),
-            )
+            if cursor.rowcount != 1:
+                return False
             connection.execute(
                 """
                 UPDATE chat_states
@@ -406,46 +456,38 @@ class SQLiteStorage:
                     now,
                 ),
             )
+        return True
 
     def mark_reply_failed(
         self, *, pending: PendingReply, now: int, retry_after_seconds: int
     ) -> None:
+        if pending.claim_token is None:
+            return
         with self._connect() as connection:
-            chat_state = connection.execute(
-                """
-                SELECT last_owner_reply_at, unread_count
-                FROM chat_states
-                WHERE business_connection_id = ? AND chat_id = ?
-                """,
-                (pending.business_connection_id, pending.chat_id),
-            ).fetchone()
-            if chat_state is None or int(chat_state["unread_count"]) <= 0:
-                return
-
-            last_owner_reply_at = _optional_int(chat_state["last_owner_reply_at"])
-            if last_owner_reply_at is not None and last_owner_reply_at >= pending.due_at:
-                return
-
             connection.execute(
                 """
-                INSERT INTO pending_replies (
-                  business_connection_id, chat_id, chat_username, chat_display,
-                  inbound_message_id, due_at, created_at, updated_at, failure_count,
-                  last_error
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-                ON CONFLICT(business_connection_id, chat_id) DO NOTHING
+                UPDATE pending_replies
+                SET due_at = ?,
+                    updated_at = ?,
+                    failure_count = failure_count + 1,
+                    last_error = ?,
+                    claim_token = NULL,
+                    claim_expires_at = NULL
+                WHERE business_connection_id = ?
+                  AND chat_id = ?
+                  AND inbound_message_id = ?
+                  AND due_at = ?
+                  AND claim_token = ?
                 """,
                 (
-                    pending.business_connection_id,
-                    pending.chat_id,
-                    pending.chat_username,
-                    pending.chat_display,
-                    pending.inbound_message_id,
                     now + retry_after_seconds,
                     now,
-                    now,
                     "telegram_send_failed",
+                    pending.business_connection_id,
+                    pending.chat_id,
+                    pending.inbound_message_id,
+                    pending.due_at,
+                    pending.claim_token,
                 ),
             )
 

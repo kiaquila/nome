@@ -55,14 +55,15 @@ class UpdateHandler:
                 )
                 continue
 
-            if not self.storage.claim_due_reply(pending=pending, now=current_time):
+            claimed = self.storage.claim_due_reply(pending=pending, now=current_time)
+            if claimed is None:
                 continue
 
             try:
                 sent_message_id = await self.telegram.send_message(
-                    chat_id=pending.chat_id,
+                    chat_id=claimed.chat_id,
                     text=self.settings.auto_reply_text,
-                    business_connection_id=pending.business_connection_id,
+                    business_connection_id=claimed.business_connection_id,
                 )
             except (TelegramAPIError, OSError) as error:
                 LOGGER.warning(
@@ -70,17 +71,18 @@ class UpdateHandler:
                     type(error).__name__,
                 )
                 self.storage.mark_reply_failed(
-                    pending=pending,
+                    pending=claimed,
                     now=current_time,
                     retry_after_seconds=300,
                 )
                 continue
 
-            self.storage.mark_reply_sent(
-                pending=pending,
+            if not self.storage.mark_reply_sent(
+                pending=claimed,
                 sent_message_id=sent_message_id,
                 now=current_time,
-            )
+            ):
+                continue
             sent_count += 1
         return sent_count
 
