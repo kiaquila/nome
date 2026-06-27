@@ -19,3 +19,5 @@
   secret and ignore Telegram Business echoes from Nome itself.
 - [x] T013 Address third Codex review finding: pass explicit Telethon
   `InputUser` values into selected Business recipients.
+- [x] T014 Address fourth Codex review finding: only return owner status reports
+  in private bot chats.

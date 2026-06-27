@@ -190,6 +190,27 @@ async def test_status_command_is_owner_only(
 
 
 @pytest.mark.asyncio
+async def test_status_command_does_not_reply_in_group_chat(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, _storage, telegram = handler
+
+    await update_handler.handle_update(
+        {
+            "message": {
+                "message_id": 1,
+                "chat": {"id": -900, "type": "group"},
+                "from": {"id": 100, "username": "ks_aquila"},
+                "text": "/status",
+            }
+        },
+        now=1_001,
+    )
+
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
 async def test_telegram_api_wraps_http_failures_as_retryable_errors() -> None:
     transport = httpx.MockTransport(lambda _request: httpx.Response(500, json={"ok": False}))
     async with httpx.AsyncClient(transport=transport) as client:

@@ -178,6 +178,9 @@ class UpdateHandler:
 
         sender = _dict(message.get("from"))
         chat = _dict(message.get("chat"))
+        if chat.get("type") != "private":
+            return
+
         chat_id = _optional_int(chat.get("id"))
         if chat_id is None:
             return
