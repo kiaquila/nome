@@ -41,7 +41,7 @@ class UpdateHandler:
             await self._handle_business_message(business_message, now=current_time)
 
         if message := update.get("message"):
-            await self._handle_owner_command(message)
+            await self._handle_owner_command(message, now=current_time)
 
     async def process_due_replies(self, *, now: int | None = None) -> int:
         current_time = utc_timestamp() if now is None else now
@@ -144,6 +144,7 @@ class UpdateHandler:
             LOGGER.info("Ignoring business echo sent by the connected bot.")
             return
 
+        message_time = _optional_int(message.get("date")) or now
         sender = _dict(message.get("from"))
         if self._is_owner_sender(sender, connection):
             self.storage.record_owner_reply(
@@ -151,7 +152,7 @@ class UpdateHandler:
                 chat_id=chat_identity.chat_id,
                 chat_username=chat_identity.username,
                 chat_display=chat_identity.display,
-                now=now,
+                now=message_time,
             )
             return
 
@@ -161,7 +162,7 @@ class UpdateHandler:
             chat_username=chat_identity.username,
             chat_display=chat_identity.display,
             inbound_message_id=int(message["message_id"]),
-            now=now,
+            now=message_time,
             delay_seconds=self.settings.auto_reply_delay_seconds,
             cooldown_seconds=self.settings.auto_reply_cooldown_seconds,
         )
@@ -185,7 +186,7 @@ class UpdateHandler:
         self._handle_business_connection(payload, now=now)
         return self.storage.get_business_connection(business_connection_id)
 
-    async def _handle_owner_command(self, message: dict[str, Any]) -> None:
+    async def _handle_owner_command(self, message: dict[str, Any], *, now: int) -> None:
         text = _str_or_none(message.get("text"))
         if not text:
             return
@@ -210,7 +211,7 @@ class UpdateHandler:
             await self.telegram.send_message(chat_id=chat_id, text="Nome is private.")
             return
 
-        await self.telegram.send_message(chat_id=chat_id, text=self.status_report())
+        await self.telegram.send_message(chat_id=chat_id, text=self.status_report(now=now))
 
     def status_report(self, *, now: int | None = None) -> str:
         current_time = utc_timestamp() if now is None else now

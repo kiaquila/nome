@@ -117,6 +117,26 @@ async def test_owner_reply_cancels_pending_away_reply(
 
 
 @pytest.mark.asyncio
+async def test_older_inbound_after_owner_reply_does_not_schedule_reply(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(
+        _owner_business_reply(message_id=12, date=1_120),
+        now=2_000,
+    )
+    await update_handler.handle_update(
+        _inbound_update(message_id=11, date=1_000),
+        now=2_001,
+    )
+
+    assert storage.due_replies(now=2_500) == []
+    assert await update_handler.process_due_replies(now=2_500) == 0
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
 async def test_owner_reply_after_due_lookup_prevents_stale_away_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
     monkeypatch: pytest.MonkeyPatch,
@@ -351,7 +371,9 @@ def _connection_update(*, can_reply: bool = True) -> dict[str, Any]:
     }
 
 
-def _inbound_update(*, message_id: int, username: str = "chapppp") -> dict[str, Any]:
+def _inbound_update(
+    *, message_id: int, username: str = "chapppp", date: int | None = None
+) -> dict[str, Any]:
     return {
         "business_message": {
             "message_id": message_id,
@@ -364,11 +386,12 @@ def _inbound_update(*, message_id: int, username: str = "chapppp") -> dict[str, 
             },
             "from": {"id": 200, "username": username},
             "text": "secret message",
+            **({"date": date} if date is not None else {}),
         }
     }
 
 
-def _owner_business_reply(*, message_id: int) -> dict[str, Any]:
+def _owner_business_reply(*, message_id: int, date: int | None = None) -> dict[str, Any]:
     return {
         "business_message": {
             "message_id": message_id,
@@ -381,6 +404,7 @@ def _owner_business_reply(*, message_id: int) -> dict[str, Any]:
             },
             "from": {"id": 100, "username": "ks_aquila"},
             "text": "manual reply",
+            **({"date": date} if date is not None else {}),
         }
     }
 

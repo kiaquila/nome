@@ -211,7 +211,7 @@ class SQLiteStorage:
         with self._connect() as connection:
             existing = connection.execute(
                 """
-                SELECT last_auto_reply_at, unread_count
+                SELECT last_auto_reply_at, last_owner_reply_at, unread_count
                 FROM chat_states
                 WHERE business_connection_id = ? AND chat_id = ?
                 """,
@@ -219,6 +219,12 @@ class SQLiteStorage:
             ).fetchone()
             unread_count = int(existing["unread_count"]) + 1 if existing else 1
             last_auto_reply_at = _optional_int(existing["last_auto_reply_at"]) if existing else None
+            last_owner_reply_at = (
+                _optional_int(existing["last_owner_reply_at"]) if existing else None
+            )
+
+            if last_owner_reply_at is not None and now <= last_owner_reply_at:
+                return ScheduleResult(scheduled=False, due_at=None)
 
             connection.execute(
                 """
