@@ -1,0 +1,54 @@
+[project]
+name = "nome"
+version = "0.1.0"
+description = "Private Telegram Business personal assistant bot."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.128.0,<1.0.0",
+  "httpx>=0.28.1,<1.0.0",
+  "telethon>=1.42.0,<2.0.0",
+  "uvicorn[standard]>=0.38.0,<1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.19.0,<2.0.0",
+  "pytest>=9.0.2,<10.0.0",
+  "pytest-asyncio>=1.3.0,<2.0.0",
+  "ruff>=0.14.9,<1.0.0",
+]
+
+[project.scripts]
+nome = "nome.app:main"
+nome-business-setup = "nome.business_setup:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["A", "B", "C4", "E", "F", "I", "N", "RUF", "S", "UP", "W"]
+ignore = [
+  "S101",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["S603", "S607"]
+"src/nome/app.py" = ["S104"]
+"tests/*.py" = ["S106"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/nome"]
+strict = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -11,17 +11,19 @@
     ".env.example",
     "scripts/",
     "src/",
+    "tests/",
+    "pyproject.toml",
+    "uv.lock",
     "bot/",
     "handlers/",
     "adapters/",
-    "package.json",
-    "pyproject.toml"
+    "package.json"
   ],
   "commands": {
-    "preflight": "pnpm run preflight",
-    "check:repo": "pnpm run check:repo",
-    "check:feature-memory": "pnpm run check:feature-memory",
-    "check:context": "pnpm run check:context"
+    "preflight": "uv run python scripts/preflight.py",
+    "check:repo": "uv run python scripts/check_repo_baseline.py",
+    "check:feature-memory": "uv run python scripts/check_feature_memory.py",
+    "check:context": "uv run python scripts/check_context_budget.py"
   },
   "requiredChecks": ["baseline-checks", "guard", "AI Review"],
   "reviewAgents": ["codex", "claude", "gemini"],

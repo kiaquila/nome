@@ -14,6 +14,10 @@ are implemented.
 
 ## First Capabilities
 
+- Reply through Telegram Business Chat Automation when the owner is busy and a
+  selected private chat has waited for five minutes.
+- Report recent inbound private chats, away replies, and inferred unread chats
+  through an owner-only Telegram command.
 - Capture short notes, tasks, and reminders from Telegram messages.
 - Confirm parsed intent before scheduling or sending anything externally.
 - Store assistant memory in a replaceable persistence layer.
@@ -25,4 +29,5 @@ are implemented.
 - Public bot distribution.
 - Group-chat workflows.
 - Multi-tenant accounts or billing.
-- Autonomous outbound messages without explicit owner configuration.
+- Autonomous outbound messages outside explicit owner-configured Telegram
+  Business chat automation.

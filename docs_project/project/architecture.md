@@ -24,6 +24,19 @@ secret manager, never in committed files.
 
 ## Likely Runtime
 
-The repository is still language-neutral at this cleanup step. A later feature
-spec should choose the runtime, Telegram library, storage, deployment target,
-and test strategy before product code is added.
+Nome v1 uses Python 3.12, FastAPI, Telegram Bot API over `httpx`, Telethon for
+one-time Business chat automation setup, and SQLite for private single-host
+persistence. The runtime is intended for one AWS host/process in v1; if the bot
+is later scaled horizontally, pending reply scheduling should move to a shared
+queue or database lease.
+
+## Business Chat Automation
+
+Telegram Business update handling lives at the edge. The webhook receives raw
+Bot API updates, records allowed Business connections for the single owner, and
+turns private `business_message` updates into scheduling decisions. Message text
+is not stored. Owner-sent Business messages cancel pending away replies.
+
+The Telethon setup command grants only `read_messages` and `reply` rights for
+the selected private chats. It does not request profile, story, gift, username,
+or message deletion rights.

@@ -15,7 +15,7 @@ personal workflows, clear boundaries, and safe handling of private data.
 - Avoid broad automation that can send messages, schedule events, or mutate
   external services without explicit user intent.
 - Update `docs_project/` when architecture or product decisions change.
-- Run `pnpm run preflight` before publishing a PR.
+- Run `uv run python scripts/preflight.py` before publishing a PR.
 
 ## Review Notes
 
