@@ -60,9 +60,10 @@ async def configure_business_bot(
                 "Telethon session is not logged in as the allowlisted owner username."
             )
 
-        bot_input = await client.get_input_entity(_as_username(bot_username))
+        bot_input = _input_user_from_entity(await client.get_entity(_as_username(bot_username)))
         user_inputs = [
-            await client.get_input_entity(_as_username(username)) for username in chat_usernames
+            _input_user_from_entity(await client.get_entity(_as_username(username)))
+            for username in chat_usernames
         ]
 
         print("Nome Business setup")
@@ -110,6 +111,14 @@ def main() -> None:
 
 def _as_username(username: str) -> str:
     return f"@{normalize_username(username)}"
+
+
+def _input_user_from_entity(entity: object) -> types.InputUser:
+    user_id = getattr(entity, "id", None)
+    access_hash = getattr(entity, "access_hash", None)
+    if user_id is None or access_hash is None:
+        raise ConfigurationError("Expected a Telegram user with an access hash.")
+    return types.InputUser(user_id=int(user_id), access_hash=int(access_hash))
 
 
 if __name__ == "__main__":

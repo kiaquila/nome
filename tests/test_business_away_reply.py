@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
 import pytest
 
+from nome.business_setup import _input_user_from_entity
 from nome.config import ConfigurationError, Settings
 from nome.handlers import UpdateHandler
 from nome.storage import SQLiteStorage
@@ -202,6 +204,13 @@ def test_from_env_requires_webhook_secret_when_running_bot(monkeypatch: pytest.M
 
     with pytest.raises(ConfigurationError):
         Settings.from_env()
+
+
+def test_business_setup_builds_input_user_from_entity() -> None:
+    input_user = _input_user_from_entity(SimpleNamespace(id=123, access_hash=456))
+
+    assert input_user.user_id == 123
+    assert input_user.access_hash == 456
 
 
 def _connection_update(*, can_reply: bool = True) -> dict[str, Any]:
