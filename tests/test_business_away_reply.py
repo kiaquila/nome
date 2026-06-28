@@ -126,6 +126,23 @@ async def test_sends_one_away_reply_after_delay_then_respects_cooldown(
 
 
 @pytest.mark.asyncio
+async def test_duplicate_inbound_update_does_not_increment_or_reschedule(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, _telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_100)
+
+    unread = storage.unread_chats()
+    assert len(unread) == 1
+    assert unread[0].unread_count == 1
+    due = storage.due_replies(now=1_300)
+    assert len(due) == 1
+    assert due[0].inbound_message_id == 11
+
+
+@pytest.mark.asyncio
 async def test_owner_reply_cancels_pending_away_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:

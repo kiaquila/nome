@@ -108,6 +108,14 @@ class SQLiteStorage:
                   PRIMARY KEY (business_connection_id, chat_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS processed_inbound_messages (
+                  business_connection_id TEXT NOT NULL,
+                  chat_id INTEGER NOT NULL,
+                  inbound_message_id INTEGER NOT NULL,
+                  processed_at INTEGER NOT NULL,
+                  PRIMARY KEY (business_connection_id, chat_id, inbound_message_id)
+                );
+
                 CREATE TABLE IF NOT EXISTS reply_events (
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
                   business_connection_id TEXT NOT NULL,
@@ -224,6 +232,18 @@ class SQLiteStorage:
             )
 
             if last_owner_reply_at is not None and now < last_owner_reply_at:
+                return ScheduleResult(scheduled=False, due_at=None)
+
+            inbound_cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO processed_inbound_messages (
+                  business_connection_id, chat_id, inbound_message_id, processed_at
+                )
+                VALUES (?, ?, ?, ?)
+                """,
+                (business_connection_id, chat_id, inbound_message_id, now),
+            )
+            if inbound_cursor.rowcount == 0:
                 return ScheduleResult(scheduled=False, due_at=None)
 
             connection.execute(
