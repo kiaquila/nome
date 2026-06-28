@@ -12,4 +12,4 @@
 
 ## Validation
 
-- [ ] `pnpm run preflight`
+- [ ] `uv run python scripts/preflight.py`

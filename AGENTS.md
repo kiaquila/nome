@@ -23,7 +23,7 @@ privacy-sensitive product, not as a generic workflow template.
   paths.
 - Keep Telegram handlers thin; put side effects behind injected ports/adapters.
 - Prefer explicit allowlists and reversible actions over broad automation.
-- Run `pnpm run preflight` before pushing unless the user explicitly scopes the
+- Run `uv run python scripts/preflight.py` before pushing unless the user explicitly scopes the
   work to analysis only.
 
 ## Completion
