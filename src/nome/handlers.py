@@ -83,16 +83,36 @@ class UpdateHandler:
                     text=self.settings.auto_reply_text,
                     business_connection_id=claimed.business_connection_id,
                 )
-            except (TelegramAPIError, OSError) as error:
+            except TelegramAPIError as error:
                 LOGGER.warning(
                     "Failed to send away reply for business chat metadata: %s",
                     type(error).__name__,
                 )
+                if error.ambiguous:
+                    if self.storage.mark_reply_sent(
+                        pending=claimed,
+                        sent_message_id=None,
+                        now=current_time,
+                    ):
+                        sent_count += 1
+                    continue
                 self.storage.mark_reply_failed(
                     pending=claimed,
                     now=current_time,
                     retry_after_seconds=300,
                 )
+                continue
+            except OSError as error:
+                LOGGER.warning(
+                    "Ambiguous away reply send failure for business chat metadata: %s",
+                    type(error).__name__,
+                )
+                if self.storage.mark_reply_sent(
+                    pending=claimed,
+                    sent_message_id=None,
+                    now=current_time,
+                ):
+                    sent_count += 1
                 continue
 
             if not self.storage.mark_reply_sent(

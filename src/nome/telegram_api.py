@@ -8,6 +8,10 @@ import httpx
 class TelegramAPIError(RuntimeError):
     """Raised when Telegram Bot API returns a failed response."""
 
+    def __init__(self, message: str, *, ambiguous: bool = False) -> None:
+        super().__init__(message)
+        self.ambiguous = ambiguous
+
 
 class TelegramBotAPI:
     def __init__(
@@ -55,8 +59,15 @@ class TelegramBotAPI:
         try:
             response = await self._client.post(self._url(method), json=payload)
             response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise TelegramAPIError(
+                "telegram_http_error",
+                ambiguous=error.response.status_code >= 500,
+            ) from error
+        except (httpx.TimeoutException, httpx.TransportError) as error:
+            raise TelegramAPIError("telegram_http_error", ambiguous=True) from error
         except httpx.HTTPError as error:
-            raise TelegramAPIError("telegram_http_error") from error
+            raise TelegramAPIError("telegram_http_error", ambiguous=True) from error
 
         data = response.json()
         if not data.get("ok"):

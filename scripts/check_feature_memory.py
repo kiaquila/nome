@@ -93,6 +93,8 @@ def _branch_changed_files() -> list[str]:
     if result.returncode != 0:
         _fetch_base_ref(base_ref, remote_ref)
         result = _diff_from_base(remote_ref)
+    if result.returncode != 0 and not os.getenv("GITHUB_ACTIONS"):
+        result = _first_successful_diff(("main", "HEAD~1"))
     if result.returncode != 0:
         details = result.stderr.strip() or result.stdout.strip() or "git diff failed"
         raise RuntimeError(f"Unable to determine branch changes: {details}")
@@ -107,6 +109,18 @@ def _diff_from_base(remote_ref: str) -> subprocess.CompletedProcess[str]:
         text=True,
         capture_output=True,
     )
+
+
+def _first_successful_diff(base_refs: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
+    last_result: subprocess.CompletedProcess[str] | None = None
+    for base_ref in base_refs:
+        result = _diff_from_base(base_ref)
+        if result.returncode == 0:
+            return result
+        last_result = result
+    if last_result is not None:
+        return last_result
+    return _diff_from_base("HEAD~1")
 
 
 def _fetch_base_ref(base_ref: str, remote_ref: str) -> None:
