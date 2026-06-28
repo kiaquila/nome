@@ -115,7 +115,6 @@ def _fetch_base_ref(base_ref: str, remote_ref: str) -> None:
             "git",
             "fetch",
             "--no-tags",
-            "--depth=1",
             "origin",
             f"+refs/heads/{base_ref}:{remote_ref}",
         ],
