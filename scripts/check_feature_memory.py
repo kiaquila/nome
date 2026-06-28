@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -86,17 +87,43 @@ def _worktree_changed_files() -> list[str]:
 
 
 def _branch_changed_files() -> list[str]:
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main...HEAD"],
+    base_ref = os.getenv("GITHUB_BASE_REF") or "main"
+    remote_ref = f"origin/{base_ref}"
+    result = _diff_from_base(remote_ref)
+    if result.returncode != 0:
+        _fetch_base_ref(base_ref, remote_ref)
+        result = _diff_from_base(remote_ref)
+    if result.returncode != 0:
+        details = result.stderr.strip() or result.stdout.strip() or "git diff failed"
+        raise RuntimeError(f"Unable to determine branch changes: {details}")
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def _diff_from_base(remote_ref: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "diff", "--name-only", f"{remote_ref}...HEAD"],
         cwd=ROOT,
         check=False,
         text=True,
         capture_output=True,
     )
-    if result.returncode != 0:
-        details = result.stderr.strip() or result.stdout.strip() or "git diff failed"
-        raise RuntimeError(f"Unable to determine branch changes: {details}")
-    return [line for line in result.stdout.splitlines() if line]
+
+
+def _fetch_base_ref(base_ref: str, remote_ref: str) -> None:
+    subprocess.run(
+        [
+            "git",
+            "fetch",
+            "--no-tags",
+            "--depth=1",
+            "origin",
+            f"+refs/heads/{base_ref}:{remote_ref}",
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
 
 
 if __name__ == "__main__":
