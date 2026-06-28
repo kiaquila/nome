@@ -21,7 +21,11 @@ DEFAULT_PRODUCT_PREFIXES = (
 
 
 def main() -> int:
-    files = _changed_files()
+    try:
+        files = _changed_files()
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 1
     product_prefixes = _product_prefixes()
     if not any(path.startswith(product_prefixes) for path in files):
         print("No product paths changed; feature-memory check passed.")
@@ -90,7 +94,8 @@ def _branch_changed_files() -> list[str]:
         capture_output=True,
     )
     if result.returncode != 0:
-        return []
+        details = result.stderr.strip() or result.stdout.strip() or "git diff failed"
+        raise RuntimeError(f"Unable to determine branch changes: {details}")
     return [line for line in result.stdout.splitlines() if line]
 
 

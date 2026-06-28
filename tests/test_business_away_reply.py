@@ -473,6 +473,14 @@ def test_from_env_requires_webhook_secret_when_running_bot(monkeypatch: pytest.M
         Settings.from_env()
 
 
+def test_from_env_rejects_webhook_secret_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET_TOKEN", "change-me")
+
+    with pytest.raises(ConfigurationError):
+        Settings.from_env()
+
+
 def test_business_setup_builds_input_user_from_entity() -> None:
     input_user = _input_user_from_entity(SimpleNamespace(id=123, access_hash=456))
 

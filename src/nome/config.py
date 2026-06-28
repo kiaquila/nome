@@ -11,6 +11,7 @@ DEFAULT_AUTO_REPLY_TEXT = (
     "Привет! Я Nome, личный бот-ассистент Кристины. Рад приветствовать! "
     "Сейчас она занята, но обязательно ответит позже."
 )
+WEBHOOK_SECRET_PLACEHOLDERS = {"change-me", "changeme", "replace-me", "placeholder"}
 
 
 class ConfigurationError(RuntimeError):
@@ -57,8 +58,16 @@ class Settings:
         if require_bot_token and not bot_token:
             raise ConfigurationError("TELEGRAM_BOT_TOKEN is required.")
         webhook_secret_token = os.getenv("TELEGRAM_WEBHOOK_SECRET_TOKEN")
+        if webhook_secret_token is not None:
+            webhook_secret_token = webhook_secret_token.strip()
         if require_bot_token and not webhook_secret_token:
             raise ConfigurationError("TELEGRAM_WEBHOOK_SECRET_TOKEN is required.")
+        if (
+            require_bot_token
+            and webhook_secret_token
+            and webhook_secret_token.lower() in WEBHOOK_SECRET_PLACEHOLDERS
+        ):
+            raise ConfigurationError("TELEGRAM_WEBHOOK_SECRET_TOKEN must not be a placeholder.")
 
         return cls(
             bot_token=bot_token,
