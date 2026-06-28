@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any, cast
@@ -70,6 +71,10 @@ class UpdateHandler:
 
             claimed = self.storage.claim_due_reply(pending=pending, now=current_time)
             if claimed is None:
+                continue
+
+            await asyncio.sleep(0)
+            if not self.storage.claimed_reply_exists(pending=claimed):
                 continue
 
             try:

@@ -266,6 +266,43 @@ async def test_owner_reply_after_due_lookup_prevents_stale_away_reply(
 
 
 @pytest.mark.asyncio
+async def test_owner_reply_after_claim_prevents_away_reply_send(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+    original_claim_due_reply = storage.claim_due_reply
+
+    def claim_due_reply_with_owner_reply(
+        *,
+        pending: Any,
+        now: int,
+        lease_seconds: int = 300,
+    ) -> Any:
+        claimed = original_claim_due_reply(
+            pending=pending,
+            now=now,
+            lease_seconds=lease_seconds,
+        )
+        assert claimed is not None
+        storage.record_owner_reply(
+            business_connection_id="conn-1",
+            chat_id=200,
+            chat_username="chapppp",
+            chat_display="Private",
+            now=now,
+        )
+        return claimed
+
+    monkeypatch.setattr(storage, "claim_due_reply", claim_due_reply_with_owner_reply)
+
+    assert await update_handler.process_due_replies(now=1_300) == 0
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
 async def test_business_echo_from_nome_does_not_cancel_pending_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:

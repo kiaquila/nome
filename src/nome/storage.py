@@ -448,6 +448,31 @@ class SQLiteStorage:
             claim_token=claim_token,
         )
 
+    def claimed_reply_exists(self, *, pending: PendingReply) -> bool:
+        if pending.claim_token is None:
+            return False
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM pending_replies
+                WHERE business_connection_id = ?
+                  AND chat_id = ?
+                  AND inbound_message_id = ?
+                  AND due_at = ?
+                  AND claim_token = ?
+                LIMIT 1
+                """,
+                (
+                    pending.business_connection_id,
+                    pending.chat_id,
+                    pending.inbound_message_id,
+                    pending.due_at,
+                    pending.claim_token,
+                ),
+            ).fetchone()
+        return row is not None
+
     def mark_reply_sent(
         self,
         *,
