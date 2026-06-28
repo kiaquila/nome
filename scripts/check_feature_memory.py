@@ -88,7 +88,7 @@ def _worktree_changed_files() -> list[str]:
 
 def _branch_changed_files() -> list[str]:
     base_ref = os.getenv("GITHUB_BASE_REF") or "main"
-    remote_ref = f"origin/{base_ref}"
+    remote_ref = f"refs/remotes/origin/{base_ref}"
     result = _diff_from_base(remote_ref)
     if result.returncode != 0:
         _fetch_base_ref(base_ref, remote_ref)
