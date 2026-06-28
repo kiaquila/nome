@@ -303,6 +303,47 @@ async def test_owner_reply_after_claim_prevents_away_reply_send(
 
 
 @pytest.mark.asyncio
+async def test_owner_reply_during_send_still_records_cooldown(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+
+    async def send_message_with_owner_reply(
+        *,
+        chat_id: int,
+        text: str,
+        business_connection_id: str | None = None,
+    ) -> int:
+        storage.record_owner_reply(
+            business_connection_id="conn-1",
+            chat_id=200,
+            chat_username="chapppp",
+            chat_display="Private",
+            now=1_300,
+        )
+        telegram.sent.append(
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "business_connection_id": business_connection_id,
+            }
+        )
+        return 99
+
+    monkeypatch.setattr(telegram, "send_message", send_message_with_owner_reply)
+
+    assert await update_handler.process_due_replies(now=1_300) == 1
+    assert storage.recent_reply_events(since=0)
+
+    await update_handler.handle_update(_inbound_update(message_id=12), now=1_400)
+
+    assert storage.due_replies(now=2_000) == []
+
+
+@pytest.mark.asyncio
 async def test_business_echo_from_nome_does_not_cancel_pending_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:

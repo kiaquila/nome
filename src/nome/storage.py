@@ -483,7 +483,7 @@ class SQLiteStorage:
         if pending.claim_token is None:
             return False
         with self._connect() as connection:
-            cursor = connection.execute(
+            connection.execute(
                 """
                 DELETE FROM pending_replies
                 WHERE business_connection_id = ?
@@ -500,8 +500,6 @@ class SQLiteStorage:
                     pending.claim_token,
                 ),
             )
-            if cursor.rowcount != 1:
-                return False
             connection.execute(
                 """
                 UPDATE chat_states
