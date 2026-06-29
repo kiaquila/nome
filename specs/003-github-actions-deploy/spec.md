@@ -1,0 +1,85 @@
+# Feature: GitHub Actions Production Deployment
+
+## Summary
+
+Nome can be deployed to its existing AWS host from GitHub Actions. A production
+deployment packages an immutable Git revision, transfers it through S3, invokes
+the host through AWS Systems Manager, and restarts the existing systemd service.
+
+## Goal
+
+Make delivery to the single production host repeatable and auditable without
+putting SSH keys, Telegram credentials, or other long-lived AWS credentials in
+GitHub.
+
+## Scope
+
+- Deploy every commit merged to `main` and support a manual deployment trigger.
+- Authenticate GitHub Actions to AWS with OIDC and a production IAM role.
+- Transfer a release archive through a private S3 deployment bucket.
+- Execute the host deployment through AWS Systems Manager Run Command.
+- Preserve the host-owned `.env`, virtual environment, SQLite data, and deploy
+  metadata between releases.
+- Install production dependencies, compile the Python package, update the
+  systemd unit, restart Nome, and verify the local health endpoint.
+- Record the deployed Git SHA and timestamp on the host.
+
+## Non-Goals
+
+- Changing Telegram update delivery from webhook to long polling.
+- Publishing Nome's HTTP endpoint to the internet.
+- Moving runtime secrets from the host into GitHub.
+- Adding multi-host deployment, containers, or automatic rollback.
+
+## Acceptance Criteria
+
+- AC-001: A push to `main` starts the production deployment workflow, and an
+  operator can also dispatch it manually.
+- AC-002: The workflow requests only `contents: read` and `id-token: write`,
+  pins external actions to full commit SHAs, and assumes an AWS role without
+  stored AWS access keys.
+- AC-003: The exact checked-out Git revision is archived, uploaded to S3, and
+  sent to the configured EC2 instance with SSM Run Command using explicit start
+  and execution timeouts.
+- AC-004: Deploying with `rsync --delete` does not replace or delete `.env`,
+  `.venv`, `data/`, or `.deploy/` on the host, and the host script rejects
+  broad parent or symlinked target directories before the destructive sync can
+  run.
+- AC-005: The deploy script asserts that `uv.lock` is up to date, validates the
+  release in a staging virtual environment before mutating the live `.venv`,
+  force-reinstalls the current Python project even when its version is unchanged,
+  installs the managed systemd unit, and restarts `nome.service`.
+- AC-006: The workflow fails unless `nome.service` becomes active and
+  `http://127.0.0.1:8000/healthz` returns a successful response, and a workflow
+  timeout cannot leave the SSM command running past the reported failure.
+- AC-007: A successful deploy writes `.deploy/current_release.json` with the
+  release SHA, UTC deployment time, and target directory.
+- AC-008: No Telegram token, webhook secret, production identifier, `.env`
+  contents, service journal entries, or database content is committed or printed
+  by the deployment, including the AWS account id, deployment bucket name, and
+  production target path in GitHub Actions logs; deployment coordinates are
+  stored as masked GitHub Actions secrets rather than unmasked variables.
+- AC-009: Local preflight passes before the deployment change is published.
+
+## Operational Safety
+
+- GitHub repository secrets hold masked deployment coordinates only.
+- The AWS role trusts only workflow runs whose OIDC subject is the repository's
+  `main` branch.
+- Runtime secrets remain in `/home/ubuntu/nome/.env` with restrictive
+  permissions and are loaded by systemd.
+- Failed deployments report only safe service state in GitHub Actions; private
+  journals are inspected directly on the host.
+- Successful deployments print the release SHA without echoing the production
+  target path into GitHub Actions logs.
+- Successful release artifact uploads suppress the private S3 destination in
+  GitHub Actions logs.
+- Presigned release URLs are generated inside the SSM command step, are not
+  stored as GitHub step outputs, and are explicitly masked.
+- Verbose dependency and file synchronization output remains in host-local
+  deploy logs instead of being streamed to GitHub Actions.
+- GitHub Actions waits through the SSM start and execution window, then cancels
+  the command before reporting a deployment timeout.
+- Deployments are serialized so two releases cannot update the host at once.
+- The service listens on loopback only; public HTTPS remains out of scope while
+  webhook delivery is being replaced in a follow-up change.
