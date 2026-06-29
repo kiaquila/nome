@@ -77,6 +77,7 @@ if [[ ! -x "$UV_TOOL_DIR/bin/uv" ]] || ! "$UV_TOOL_DIR/bin/uv" --version | grep 
     "uv==${UV_VERSION}"
 fi
 
+"$UV_TOOL_DIR/bin/uv" lock --project "$TARGET_DIR" --check
 UV_PROJECT_ENVIRONMENT="$TARGET_DIR/.venv" "$UV_TOOL_DIR/bin/uv" sync \
   --project "$TARGET_DIR" \
   --frozen \

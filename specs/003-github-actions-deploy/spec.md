@@ -45,9 +45,9 @@ GitHub.
   `.venv`, `data/`, or `.deploy/` on the host, and the host script rejects
   broad parent or symlinked target directories before the destructive sync can
   run.
-- AC-005: The deploy script force-reinstalls the current Python project even
-  when its version is unchanged, verifies that it compiles, installs the
-  managed systemd unit, and restarts `nome.service`.
+- AC-005: The deploy script asserts that `uv.lock` is up to date, force-reinstalls
+  the current Python project even when its version is unchanged, verifies that it
+  compiles, installs the managed systemd unit, and restarts `nome.service`.
 - AC-006: The workflow fails unless `nome.service` becomes active and
   `http://127.0.0.1:8000/healthz` returns a successful response, and a workflow
   timeout cannot leave the SSM command running past the reported failure.

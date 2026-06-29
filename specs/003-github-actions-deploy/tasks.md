@@ -13,3 +13,4 @@
 - [x] T011 Reject symlinked deployment targets before destructive sync.
 - [x] T012 Avoid streaming private service journals into GitHub Actions.
 - [x] T013 Bound SSM execution time and cancel timed-out deploy commands.
+- [x] T014 Assert `uv.lock` freshness before production dependency sync.
