@@ -85,8 +85,10 @@ checks that the file exists; it does not print, upload, replace, or delete it.
 7. The deployed revision is recorded in `.deploy/current_release.json`.
 
 Deployments are serialized in GitHub Actions and again on the host with a file
-lock. The current service remains loopback-only while Nome still contains its
-webhook adapter. Long polling is a separate runtime change.
+lock. The service is loopback-only: Nome pulls Telegram updates via long
+polling, so the systemd unit only needs to bind `127.0.0.1:8000` for the
+deploy verifier's `/healthz` probe and never accepts inbound traffic from the
+network.
 
 The SSM command has a five-minute start deadline and a twenty-minute shell
 execution timeout. GitHub Actions polls through that full window plus one poll

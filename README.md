@@ -12,8 +12,9 @@ The repository keeps feature memory in `specs/` and durable product context in
 
 - `docs_project/` contains durable product and architecture context.
 - `specs/` contains per-PR feature memory: `spec.md`, `plan.md`, and `tasks.md`.
-- `src/nome/` contains the FastAPI webhook service, Telegram adapter, storage,
-  scheduling logic, and Telethon setup command.
+- `src/nome/` contains the long-polling Telegram client, reply scheduler,
+  storage, and Telethon setup command. A small FastAPI app exposes only a
+  loopback `/healthz` endpoint for deployment verification.
 - `tests/` covers privacy-sensitive bot behavior.
 - `scripts/` contains local Python repository checks plus compatibility guard
   helpers used by existing GitHub workflows.
@@ -41,11 +42,15 @@ Install dependencies:
 uv sync --dev
 ```
 
-Run the webhook service:
+Run the bot. The process opens a long-polling connection to the Telegram Bot
+API and serves a loopback `/healthz` endpoint for the deploy verifier:
 
 ```bash
-uv run uvicorn nome.app:app --host 0.0.0.0 --port 8000
+uv run nome
 ```
+
+Nome does not require any inbound HTTP exposure. On startup it deletes any
+previously configured Telegram webhook so `getUpdates` can take over cleanly.
 
 ## Production Deployment
 

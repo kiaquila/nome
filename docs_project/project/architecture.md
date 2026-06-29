@@ -24,18 +24,27 @@ secret manager, never in committed files.
 
 ## Likely Runtime
 
-Nome v1 uses Python 3.12, FastAPI, Telegram Bot API over `httpx`, Telethon for
-one-time Business chat automation setup, and SQLite for private single-host
-persistence. The runtime is intended for one AWS host/process in v1; if the bot
-is later scaled horizontally, pending reply scheduling should move to a shared
-queue or database lease.
+Nome v1 uses Python 3.12, the Telegram Bot API over `httpx` with long polling,
+Telethon for one-time Business chat automation setup, and SQLite for private
+single-host persistence. A small FastAPI app exposes only a loopback `/healthz`
+endpoint that the deploy verifier polls; the bot itself does not need any
+inbound HTTP exposure. The runtime is intended for one AWS host/process in v1;
+horizontal scaling would require both the pending-reply scheduler and the
+single-consumer `getUpdates` loop to be reworked.
 
 ## Business Chat Automation
 
-Telegram Business update handling lives at the edge. The webhook receives raw
-Bot API updates, records allowed Business connections for the single owner, and
-turns private `business_message` updates into scheduling decisions. Message text
-is not stored. Owner-sent Business messages cancel pending away replies.
+Telegram Business update handling lives at the edge. A long-polling worker
+calls `getUpdates` for `message`, `business_connection`, and `business_message`
+update kinds, records allowed Business connections for the single owner, and
+turns private `business_message` updates into scheduling decisions. Message
+text is not stored. Owner-sent Business messages cancel pending away replies.
+
+The polling worker deletes any previously configured Telegram webhook on
+startup so `getUpdates` cannot race against a stale subscription, then keeps
+the highest acknowledged `update_id` in memory and advances the offset whether
+or not the handler raised — re-delivering a poisoned update would block every
+later update behind it.
 
 The Telethon setup command grants only `read_messages` and `reply` rights for
 the selected private chats. It does not request profile, story, gift, username,
