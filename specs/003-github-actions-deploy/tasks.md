@@ -12,3 +12,4 @@
 - [x] T010 Reject broad deployment target directories before destructive sync.
 - [x] T011 Reject symlinked deployment targets before destructive sync.
 - [x] T012 Avoid streaming private service journals into GitHub Actions.
+- [x] T013 Bound SSM execution time and cancel timed-out deploy commands.

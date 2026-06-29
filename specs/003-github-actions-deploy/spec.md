@@ -39,7 +39,8 @@ GitHub.
   pins external actions to full commit SHAs, and assumes an AWS role without
   stored AWS access keys.
 - AC-003: The exact checked-out Git revision is archived, uploaded to S3, and
-  sent to the configured EC2 instance with SSM Run Command.
+  sent to the configured EC2 instance with SSM Run Command using explicit start
+  and execution timeouts.
 - AC-004: Deploying with `rsync --delete` does not replace or delete `.env`,
   `.venv`, `data/`, or `.deploy/` on the host, and the host script rejects
   broad parent or symlinked target directories before the destructive sync can
@@ -48,7 +49,8 @@ GitHub.
   when its version is unchanged, verifies that it compiles, installs the
   managed systemd unit, and restarts `nome.service`.
 - AC-006: The workflow fails unless `nome.service` becomes active and
-  `http://127.0.0.1:8000/healthz` returns a successful response.
+  `http://127.0.0.1:8000/healthz` returns a successful response, and a workflow
+  timeout cannot leave the SSM command running past the reported failure.
 - AC-007: A successful deploy writes `.deploy/current_release.json` with the
   release SHA, UTC deployment time, and target directory.
 - AC-008: No Telegram token, webhook secret, production identifier, `.env`
@@ -65,6 +67,8 @@ GitHub.
   permissions and are loaded by systemd.
 - Failed deployments report only safe service state in GitHub Actions; private
   journals are inspected directly on the host.
+- GitHub Actions waits through the SSM start and execution window, then cancels
+  the command before reporting a deployment timeout.
 - Deployments are serialized so two releases cannot update the host at once.
 - The service listens on loopback only; public HTTPS remains out of scope while
   webhook delivery is being replaced in a follow-up change.

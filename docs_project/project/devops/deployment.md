@@ -40,9 +40,10 @@ OIDC subject. This lets AWS reject deploy attempts from any other branch even
 when repository Actions variables are readable there.
 
 The role needs permission to upload and read release objects in the configured
-bucket, send `AWS-RunShellScript` commands to the production instance, and read
-SSM command invocation status. The EC2 instance must already be registered with
-Systems Manager and have permission to receive Run Command requests.
+bucket, send and cancel `AWS-RunShellScript` commands for the production
+instance, and read SSM command invocation status. The EC2 instance must already
+be registered with Systems Manager and have permission to receive Run Command
+requests.
 
 ## Host Prerequisites
 
@@ -76,6 +77,11 @@ checks that the file exists; it does not print, upload, replace, or delete it.
 Deployments are serialized in GitHub Actions and again on the host with a file
 lock. The current service remains loopback-only while Nome still contains its
 webhook adapter. Long polling is a separate runtime change.
+
+The SSM command has a five-minute start deadline and a twenty-minute shell
+execution timeout. GitHub Actions polls through that full window plus one poll
+interval before reporting a timeout, and cancels the command before exiting so a
+deployment cannot continue silently after the workflow has failed.
 
 The host script refuses broad parent directories such as `/home/ubuntu` and
 symlinked target paths. The target must be a dedicated directory whose final

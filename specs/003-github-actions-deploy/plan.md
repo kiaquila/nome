@@ -9,7 +9,9 @@ short-lived presigned download URL.
 
 The workflow sends a small bootstrap script to the existing EC2 instance with
 SSM Run Command. The bootstrap downloads and extracts the archive, then runs the
-repository-owned deployment script as the `ubuntu` user.
+repository-owned deployment script as the `ubuntu` user. Run Command receives a
+bounded start deadline and shell execution timeout, and the workflow polls
+through that full window before cancelling a timed-out command.
 
 External actions are pinned to full release commit SHAs so mutable tags cannot
 change code that runs with the production workflow's OIDC permission.
@@ -50,7 +52,7 @@ does not read, upload, replace, or echo it.
 Use a dedicated `github-actions-nome-deploy` role. Its trust policy accepts
 only the GitHub OIDC subject for the `kiaquila/nome` repository's `main` branch.
 Its permissions are limited to the Nome deployment bucket and SSM commands plus
-invocation status reads for the existing managed instance.
+cancel and invocation status reads for the existing managed instance.
 
 ## Verification
 
