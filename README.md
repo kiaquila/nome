@@ -18,6 +18,8 @@ The repository keeps feature memory in `specs/` and durable product context in
 - `scripts/` contains local Python repository checks plus compatibility guard
   helpers used by existing GitHub workflows.
 - `.github/workflows/` runs Python CI, PR guard, AI review, and dependency scans.
+- `deploy/` and `scripts/deploy_release.sh` define the production systemd
+  service and host-side release procedure.
 
 ## Development Workflow
 
@@ -44,6 +46,18 @@ Run the webhook service:
 ```bash
 uv run uvicorn nome.app:app --host 0.0.0.0 --port 8000
 ```
+
+## Production Deployment
+
+Merges to `main` deploy through GitHub Actions using AWS OIDC, S3, and Systems
+Manager. The server keeps its own `.env`, virtual environment, SQLite data, and
+private session files across releases. Runtime secrets are never copied into
+GitHub.
+
+See `docs_project/project/devops/deployment.md` for environment variables, AWS
+permissions, host prerequisites, and operational checks.
+
+## Telegram Business Setup
 
 Configure Telegram Business chat automation from an existing Telethon user
 session:

@@ -1,0 +1,31 @@
+[Unit]
+Description=Nome Telegram personal assistant
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=__TARGET_DIR__
+EnvironmentFile=__TARGET_DIR__/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=__TARGET_DIR__/.venv/bin/python -m uvicorn nome.app:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=read-only
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=full
+ReadWritePaths=__TARGET_DIR__/data
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
