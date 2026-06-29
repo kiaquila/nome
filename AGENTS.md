@@ -26,6 +26,21 @@ privacy-sensitive product, not as a generic workflow template.
 - Run `uv run python scripts/preflight.py` before pushing unless the user explicitly scopes the
   work to analysis only.
 
+## Commit Convention
+
+- Every commit produced with AI assistance must carry a co-author trailer for each
+  AI agent that contributed, mirroring the `capsule-zero` convention.
+- Append the trailer(s) as the final lines of the commit message, after a blank line:
+
+  ```
+  Co-Authored-By: Claude <noreply@anthropic.com>
+  Co-Authored-By: OpenAI Codex <codex@openai.com>
+  ```
+
+- Use the Claude trailer when Claude Code wrote the change and the Codex trailer when
+  Codex did; include both when both agents contributed. The human committer remains the
+  primary author.
+
 ## Completion
 
 A change is complete when the spec acceptance criteria have evidence, local
