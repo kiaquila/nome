@@ -37,7 +37,7 @@ journals. Release metadata is written only after those checks pass.
 
 ## Configuration
 
-GitHub Actions repository variables provide these non-secret coordinates:
+GitHub Actions repository secrets provide these masked deployment coordinates:
 
 - `AWS_REGION`
 - `AWS_DEPLOY_ROLE_ARN`
@@ -46,9 +46,11 @@ GitHub Actions repository variables provide these non-secret coordinates:
 - `DEPLOY_TARGET_DIR`
 
 The host's existing `.env` remains the only runtime secret source. The workflow
-does not read, upload, replace, or echo it. Deploy logs also mask the AWS account
-id, suppress successful S3 upload destinations, and avoid printing the
-production target path; verbose sync output is kept in host-local deploy logs.
+does not read, upload, replace, or echo it. Deployment coordinates are stored as
+masked secrets so evaluated GitHub Actions step environments do not reveal them.
+Deploy logs also mask the AWS account id, avoid exposing presigned release URLs,
+suppress successful S3 upload destinations, and avoid printing the production
+target path; verbose sync output is kept in host-local deploy logs.
 
 ## IAM
 

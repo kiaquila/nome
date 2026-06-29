@@ -57,12 +57,13 @@ GitHub.
 - AC-008: No Telegram token, webhook secret, production identifier, `.env`
   contents, service journal entries, or database content is committed or printed
   by the deployment, including the AWS account id, deployment bucket name, and
-  production target path in GitHub Actions logs.
+  production target path in GitHub Actions logs; deployment coordinates are
+  stored as masked GitHub Actions secrets rather than unmasked variables.
 - AC-009: Local preflight passes before the deployment change is published.
 
 ## Operational Safety
 
-- GitHub repository variables hold non-secret deployment coordinates only.
+- GitHub repository secrets hold masked deployment coordinates only.
 - The AWS role trusts only workflow runs whose OIDC subject is the repository's
   `main` branch.
 - Runtime secrets remain in `/home/ubuntu/nome/.env` with restrictive
@@ -73,6 +74,8 @@ GitHub.
   target path into GitHub Actions logs.
 - Successful release artifact uploads suppress the private S3 destination in
   GitHub Actions logs.
+- Presigned release URLs are generated inside the SSM command step, are not
+  stored as GitHub step outputs, and are explicitly masked.
 - Verbose dependency and file synchronization output remains in host-local
   deploy logs instead of being streamed to GitHub Actions.
 - GitHub Actions waits through the SSM start and execution window, then cancels

@@ -11,17 +11,17 @@ The workflow is defined in `.github/workflows/deploy.yml`. It runs after a push
 to `main` and can also be dispatched manually for a revision already contained
 in `main` history.
 
-GitHub logs mask the AWS account id during role assumption and suppress
-successful S3 upload destinations. They also do not print the configured
-production target path. Verbose dependency and file synchronization output
-remains in a host-local deploy log under `.deploy/`; the target path remains
-available in host-local deployment metadata.
+GitHub logs mask the AWS account id during role assumption and keep deployment
+coordinates in masked repository secrets. Successful S3 upload destinations and
+the configured production target path are not printed. Verbose dependency and
+file synchronization output remains in a host-local deploy log under
+`.deploy/`; the target path remains available in host-local deployment metadata.
 
-## GitHub Variables
+## GitHub Secrets
 
-Define these repository-level GitHub Actions variables:
+Define these repository-level GitHub Actions secrets:
 
-| Variable | Purpose |
+| Secret | Purpose |
 | --- | --- |
 | `AWS_REGION` | Region containing the deployment resources and EC2 instance. |
 | `AWS_DEPLOY_ROLE_ARN` | IAM role trusted by the Nome production environment's OIDC subject. |
@@ -29,8 +29,10 @@ Define these repository-level GitHub Actions variables:
 | `DEPLOY_INSTANCE_ID` | SSM-managed EC2 instance that runs Nome. |
 | `DEPLOY_TARGET_DIR` | Stable absolute host path to the dedicated Nome directory, normally `/home/ubuntu/nome`. The final path segment must be `nome`. |
 
-These values are deployment coordinates, not runtime secrets. Telegram tokens
-and other Nome settings must not be copied into GitHub variables or secrets.
+These values are deployment coordinates, not runtime application secrets, but
+they are kept in GitHub secrets so Actions masks them in evaluated step
+environment and script logs. Telegram tokens and other Nome settings must not
+be copied into GitHub variables or secrets.
 
 ## AWS Access
 
@@ -42,8 +44,7 @@ repo:kiaquila/nome:ref:refs/heads/main
 ```
 
 Keeping the job outside a GitHub Environment preserves the branch name in the
-OIDC subject. This lets AWS reject deploy attempts from any other branch even
-when repository Actions variables are readable there.
+OIDC subject. This lets AWS reject deploy attempts from any other branch.
 
 The role needs permission to upload and read release objects in the configured
 bucket, send and cancel `AWS-RunShellScript` commands for the production

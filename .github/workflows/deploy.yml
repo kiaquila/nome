@@ -51,18 +51,18 @@ jobs:
       - name: Validate deployment configuration
         shell: bash
         env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          DEPLOY_S3_BUCKET: ${{ vars.DEPLOY_S3_BUCKET }}
-          DEPLOY_INSTANCE_ID: ${{ vars.DEPLOY_INSTANCE_ID }}
-          DEPLOY_TARGET_DIR: ${{ vars.DEPLOY_TARGET_DIR }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          DEPLOY_S3_BUCKET: ${{ secrets.DEPLOY_S3_BUCKET }}
+          DEPLOY_INSTANCE_ID: ${{ secrets.DEPLOY_INSTANCE_ID }}
+          DEPLOY_TARGET_DIR: ${{ secrets.DEPLOY_TARGET_DIR }}
         run: |
           set -euo pipefail
-          : "${AWS_REGION:?Set the AWS_REGION repository variable}"
-          : "${AWS_DEPLOY_ROLE_ARN:?Set the AWS_DEPLOY_ROLE_ARN repository variable}"
-          : "${DEPLOY_S3_BUCKET:?Set the DEPLOY_S3_BUCKET repository variable}"
-          : "${DEPLOY_INSTANCE_ID:?Set the DEPLOY_INSTANCE_ID repository variable}"
-          : "${DEPLOY_TARGET_DIR:?Set the DEPLOY_TARGET_DIR repository variable}"
+          : "${AWS_REGION:?Set the AWS_REGION repository secret}"
+          : "${AWS_DEPLOY_ROLE_ARN:?Set the AWS_DEPLOY_ROLE_ARN repository secret}"
+          : "${DEPLOY_S3_BUCKET:?Set the DEPLOY_S3_BUCKET repository secret}"
+          : "${DEPLOY_INSTANCE_ID:?Set the DEPLOY_INSTANCE_ID repository secret}"
+          : "${DEPLOY_TARGET_DIR:?Set the DEPLOY_TARGET_DIR repository secret}"
 
       - name: Resolve release metadata
         id: release
@@ -75,8 +75,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@254c19bd240aabef8777f48595e9d2d7b972184b # v6.2.1
         with:
-          aws-region: ${{ vars.AWS_REGION }}
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           mask-aws-account-id: true
 
       - name: Create release archive
@@ -93,20 +93,20 @@ jobs:
         run: |
           set -euo pipefail
           key="releases/${RELEASE_SHA}.tar.gz"
-          aws s3 cp --only-show-errors "${{ steps.release.outputs.archive }}" "s3://${{ vars.DEPLOY_S3_BUCKET }}/${key}"
+          aws s3 cp --only-show-errors "${{ steps.release.outputs.archive }}" "s3://${{ secrets.DEPLOY_S3_BUCKET }}/${key}"
           echo "key=$key" >> "$GITHUB_OUTPUT"
-          echo "url=$(aws s3 presign "s3://${{ vars.DEPLOY_S3_BUCKET }}/${key}" --expires-in 3600)" >> "$GITHUB_OUTPUT"
 
       - name: Send production deploy command
         id: ssm
         shell: bash
         env:
-          DEPLOY_TARGET_DIR: ${{ vars.DEPLOY_TARGET_DIR }}
-          DEPLOY_INSTANCE_ID: ${{ vars.DEPLOY_INSTANCE_ID }}
+          DEPLOY_TARGET_DIR: ${{ secrets.DEPLOY_TARGET_DIR }}
+          DEPLOY_INSTANCE_ID: ${{ secrets.DEPLOY_INSTANCE_ID }}
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
-          RELEASE_URL: ${{ steps.artifact.outputs.url }}
         run: |
           set -euo pipefail
+          release_url=$(aws s3 presign "s3://${{ secrets.DEPLOY_S3_BUCKET }}/${{ steps.artifact.outputs.key }}" --expires-in 3600)
+          echo "::add-mask::$release_url"
 
           cat > "$RUNNER_TEMP/remote-deploy.sh" <<'EOF'
           set -euo pipefail
@@ -139,7 +139,7 @@ jobs:
 
           jq -n \
             --arg release_sha "$RELEASE_SHA" \
-            --arg release_url "$RELEASE_URL" \
+            --arg release_url "$release_url" \
             --arg target_dir "$DEPLOY_TARGET_DIR" \
             --arg remote_script_b64 "$remote_script_b64" \
             --arg execution_timeout "$SSM_EXECUTION_TIMEOUT_SECONDS" \
@@ -170,7 +170,7 @@ jobs:
       - name: Wait for deploy completion
         shell: bash
         env:
-          DEPLOY_INSTANCE_ID: ${{ vars.DEPLOY_INSTANCE_ID }}
+          DEPLOY_INSTANCE_ID: ${{ secrets.DEPLOY_INSTANCE_ID }}
           COMMAND_ID: ${{ steps.ssm.outputs.command_id }}
         run: |
           set -euo pipefail
