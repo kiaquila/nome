@@ -96,6 +96,7 @@ Inspect the deployed revision without reading runtime secrets:
 cat /home/ubuntu/nome/.deploy/current_release.json
 ```
 
-A failed workflow prints the SSM command output and the service's recent
-journal entries. Correct the release or host configuration, then dispatch the
-workflow again for a revision in `main`.
+A failed workflow prints the SSM command output and safe systemd state fields,
+but it does not stream service journal entries back into GitHub Actions. Inspect
+private service logs on the host, correct the release or host configuration,
+then dispatch the workflow again for a revision in `main`.

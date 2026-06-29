@@ -52,7 +52,8 @@ GitHub.
 - AC-007: A successful deploy writes `.deploy/current_release.json` with the
   release SHA, UTC deployment time, and target directory.
 - AC-008: No Telegram token, webhook secret, production identifier, `.env`
-  contents, or database content is committed or printed by the deployment.
+  contents, service journal entries, or database content is committed or printed
+  by the deployment.
 - AC-009: Local preflight passes before the deployment change is published.
 
 ## Operational Safety
@@ -62,6 +63,8 @@ GitHub.
   `main` branch.
 - Runtime secrets remain in `/home/ubuntu/nome/.env` with restrictive
   permissions and are loaded by systemd.
+- Failed deployments report only safe service state in GitHub Actions; private
+  journals are inspected directly on the host.
 - Deployments are serialized so two releases cannot update the host at once.
 - The service listens on loopback only; public HTTPS remains out of scope while
   webhook delivery is being replaced in a follow-up change.

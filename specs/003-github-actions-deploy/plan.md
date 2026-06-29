@@ -28,8 +28,9 @@ before touching the running service.
 
 The script renders `deploy/nome.service` with the configured absolute target
 directory, installs it under systemd, restarts the service, and waits for both
-the active state and the loopback health endpoint. Release metadata is written
-only after those checks pass.
+the active state and the loopback health endpoint. If health verification fails,
+the workflow reports safe systemd state fields without streaming service
+journals. Release metadata is written only after those checks pass.
 
 ## Configuration
 

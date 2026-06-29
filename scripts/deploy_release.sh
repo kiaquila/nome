@@ -131,9 +131,10 @@ PY
   done
 
   if [[ "$service_healthy" != "1" ]]; then
-    echo "Nome failed its post-deploy health check." >&2
-    sudo systemctl --no-pager --full status "$SERVICE_NAME" || true
-    sudo journalctl --no-pager -u "$SERVICE_NAME" -n 100 || true
+    echo "Nome failed its post-deploy health check; service logs remain on the host." >&2
+    sudo systemctl show "$SERVICE_NAME" \
+      --property=ActiveState,SubState,Result,ExecMainStatus \
+      --no-pager >&2 || true
     exit 1
   fi
 fi
