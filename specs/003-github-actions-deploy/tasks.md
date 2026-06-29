@@ -9,3 +9,4 @@
 - [x] T007 Commit, push, and open the deployment pull request.
 - [x] T008 Pin external deploy actions to full release commit SHAs.
 - [x] T009 Force-reinstall the root package on every host release.
+- [x] T010 Reject broad deployment target directories before destructive sync.

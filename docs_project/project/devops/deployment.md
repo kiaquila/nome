@@ -21,7 +21,7 @@ Define these repository-level GitHub Actions variables:
 | `AWS_DEPLOY_ROLE_ARN` | IAM role trusted by the Nome production environment's OIDC subject. |
 | `DEPLOY_S3_BUCKET` | Private bucket used for immutable release archives. |
 | `DEPLOY_INSTANCE_ID` | SSM-managed EC2 instance that runs Nome. |
-| `DEPLOY_TARGET_DIR` | Stable absolute host path, normally `/home/ubuntu/nome`. |
+| `DEPLOY_TARGET_DIR` | Stable absolute host path to the dedicated Nome directory, normally `/home/ubuntu/nome`. The final path segment must be `nome`. |
 
 These values are deployment coordinates, not runtime secrets. Telegram tokens
 and other Nome settings must not be copied into GitHub variables or secrets.
@@ -76,6 +76,10 @@ checks that the file exists; it does not print, upload, replace, or delete it.
 Deployments are serialized in GitHub Actions and again on the host with a file
 lock. The current service remains loopback-only while Nome still contains its
 webhook adapter. Long polling is a separate runtime change.
+
+The host script refuses broad parent directories such as `/home/ubuntu`; the
+target must be a dedicated directory whose final path segment is `nome` before
+the destructive `rsync --delete` step can run.
 
 ## Operations
 

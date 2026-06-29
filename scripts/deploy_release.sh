@@ -3,6 +3,9 @@
 set -euo pipefail
 
 TARGET_DIR="${TARGET_DIR:?TARGET_DIR is required}"
+while [[ "$TARGET_DIR" != "/" && "$TARGET_DIR" == */ ]]; do
+  TARGET_DIR="${TARGET_DIR%/}"
+done
 RELEASE_SHA="${RELEASE_SHA:?RELEASE_SHA is required}"
 RELEASE_SOURCE_DIR="${RELEASE_SOURCE_DIR:-$(pwd)}"
 SERVICE_NAME="${SERVICE_NAME:-nome}"
@@ -14,6 +17,11 @@ LOCK_FILE="/tmp/nome-deploy.lock"
 
 if [[ "$TARGET_DIR" != /* ]]; then
   echo "TARGET_DIR must be an absolute path." >&2
+  exit 1
+fi
+
+if [[ "${TARGET_DIR##*/}" != "nome" ]]; then
+  echo "TARGET_DIR must point to a dedicated Nome directory named 'nome'." >&2
   exit 1
 fi
 
