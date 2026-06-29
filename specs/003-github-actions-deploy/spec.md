@@ -35,8 +35,9 @@ GitHub.
 
 - AC-001: A push to `main` starts the production deployment workflow, and an
   operator can also dispatch it manually.
-- AC-002: The workflow requests only `contents: read` and `id-token: write` and
-  assumes an AWS role without stored AWS access keys.
+- AC-002: The workflow requests only `contents: read` and `id-token: write`,
+  pins external actions to full commit SHAs, and assumes an AWS role without
+  stored AWS access keys.
 - AC-003: The exact checked-out Git revision is archived, uploaded to S3, and
   sent to the configured EC2 instance with SSM Run Command.
 - AC-004: Deploying with `rsync --delete` does not replace or delete `.env`,

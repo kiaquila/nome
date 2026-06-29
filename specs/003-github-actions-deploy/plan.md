@@ -11,6 +11,9 @@ The workflow sends a small bootstrap script to the existing EC2 instance with
 SSM Run Command. The bootstrap downloads and extracts the archive, then runs the
 repository-owned deployment script as the `ubuntu` user.
 
+External actions are pinned to full release commit SHAs so mutable tags cannot
+change code that runs with the production workflow's OIDC permission.
+
 ## Host Deployment
 
 `scripts/deploy_release.sh` serializes deployments with `flock`, syncs tracked

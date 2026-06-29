@@ -7,3 +7,4 @@
 - [x] T005 Validate the deployment script and run local preflight.
 - [x] T006 Configure GitHub Actions variables and AWS OIDC resources.
 - [x] T007 Commit, push, and open the deployment pull request.
+- [x] T008 Pin external deploy actions to full release commit SHAs.
