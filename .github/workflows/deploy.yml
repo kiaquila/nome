@@ -93,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           key="releases/${RELEASE_SHA}.tar.gz"
-          aws s3 cp "${{ steps.release.outputs.archive }}" "s3://${{ vars.DEPLOY_S3_BUCKET }}/${key}"
+          aws s3 cp --only-show-errors "${{ steps.release.outputs.archive }}" "s3://${{ vars.DEPLOY_S3_BUCKET }}/${key}"
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "url=$(aws s3 presign "s3://${{ vars.DEPLOY_S3_BUCKET }}/${key}" --expires-in 3600)" >> "$GITHUB_OUTPUT"
 

@@ -11,10 +11,11 @@ The workflow is defined in `.github/workflows/deploy.yml`. It runs after a push
 to `main` and can also be dispatched manually for a revision already contained
 in `main` history.
 
-GitHub logs mask the AWS account id during role assumption and do not print the
-configured production target path. Verbose dependency and file synchronization
-output remains in a host-local deploy log under `.deploy/`; the target path
-remains available in host-local deployment metadata.
+GitHub logs mask the AWS account id during role assumption and suppress
+successful S3 upload destinations. They also do not print the configured
+production target path. Verbose dependency and file synchronization output
+remains in a host-local deploy log under `.deploy/`; the target path remains
+available in host-local deployment metadata.
 
 ## GitHub Variables
 

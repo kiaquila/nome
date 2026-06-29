@@ -47,8 +47,8 @@ GitHub Actions repository variables provide these non-secret coordinates:
 
 The host's existing `.env` remains the only runtime secret source. The workflow
 does not read, upload, replace, or echo it. Deploy logs also mask the AWS account
-id and avoid printing the production target path; verbose sync output is kept in
-host-local deploy logs.
+id, suppress successful S3 upload destinations, and avoid printing the
+production target path; verbose sync output is kept in host-local deploy logs.
 
 ## IAM
 

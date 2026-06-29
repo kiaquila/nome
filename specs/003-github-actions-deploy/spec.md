@@ -55,8 +55,8 @@ GitHub.
   release SHA, UTC deployment time, and target directory.
 - AC-008: No Telegram token, webhook secret, production identifier, `.env`
   contents, service journal entries, or database content is committed or printed
-  by the deployment, including the AWS account id and production target path in
-  GitHub Actions logs.
+  by the deployment, including the AWS account id, deployment bucket name, and
+  production target path in GitHub Actions logs.
 - AC-009: Local preflight passes before the deployment change is published.
 
 ## Operational Safety
@@ -70,6 +70,8 @@ GitHub.
   journals are inspected directly on the host.
 - Successful deployments print the release SHA without echoing the production
   target path into GitHub Actions logs.
+- Successful release artifact uploads suppress the private S3 destination in
+  GitHub Actions logs.
 - Verbose dependency and file synchronization output remains in host-local
   deploy logs instead of being streamed to GitHub Actions.
 - GitHub Actions waits through the SSM start and execution window, then cancels

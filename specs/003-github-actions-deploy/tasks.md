@@ -17,3 +17,4 @@
 - [x] T015 Mask the AWS account id in deployment credential logs.
 - [x] T016 Stop printing the production target path in deploy success output.
 - [x] T017 Keep verbose deploy command output in host-local logs.
+- [x] T018 Suppress successful S3 upload destinations in deploy logs.
