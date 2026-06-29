@@ -47,7 +47,6 @@ def handler(tmp_path: Path) -> tuple[UpdateHandler, SQLiteStorage, FakeTelegram]
     telegram = FakeTelegram()
     settings = Settings(
         bot_token="test-token",
-        webhook_secret_token=None,
         database_path=tmp_path / "nome.sqlite3",
         auto_reply_delay_seconds=300,
         auto_reply_cooldown_hours=12,
@@ -512,17 +511,38 @@ async def test_telegram_api_wraps_http_failures_as_retryable_errors() -> None:
         assert error.value.ambiguous is True
 
 
-def test_from_env_requires_webhook_secret_when_running_bot(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
-    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET_TOKEN", raising=False)
+def test_from_env_requires_bot_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
 
     with pytest.raises(ConfigurationError):
         Settings.from_env()
 
 
-def test_from_env_rejects_webhook_secret_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_from_env_defaults_polling_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
-    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET_TOKEN", "change-me")
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(tmp_path / "nome.sqlite3"))
+    monkeypatch.delenv("NOME_LONG_POLL_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("NOME_POLLING_ERROR_BACKOFF_SECONDS", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.long_poll_timeout_seconds == 50
+    assert settings.polling_error_backoff_seconds == 5.0
+
+
+def test_from_env_rejects_negative_long_poll_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("NOME_LONG_POLL_TIMEOUT_SECONDS", "-1")
+
+    with pytest.raises(ConfigurationError):
+        Settings.from_env()
+
+
+def test_from_env_rejects_negative_polling_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("NOME_POLLING_ERROR_BACKOFF_SECONDS", "-0.5")
 
     with pytest.raises(ConfigurationError):
         Settings.from_env()
