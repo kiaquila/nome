@@ -19,8 +19,10 @@ change code that runs with the production workflow's OIDC permission.
 `scripts/deploy_release.sh` serializes deployments with `flock`, syncs tracked
 release files into the stable target directory, and excludes host-owned state.
 A pinned `uv` bootstrap environment in `.deploy/` synchronizes the production
-environment exactly from the committed lockfile. The script then compiles the
-Python package before touching the running service.
+environment exactly from the committed lockfile. The root `nome` package is
+force-reinstalled so a code-only release cannot reuse stale site-packages when
+the project version is unchanged. The script then compiles the Python package
+before touching the running service.
 
 The script renders `deploy/nome.service` with the configured absolute target
 directory, installs it under systemd, restarts the service, and waits for both

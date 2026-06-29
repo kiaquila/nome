@@ -68,7 +68,8 @@ UV_PROJECT_ENVIRONMENT="$TARGET_DIR/.venv" "$UV_TOOL_DIR/bin/uv" sync \
   --project "$TARGET_DIR" \
   --frozen \
   --no-dev \
-  --no-editable
+  --no-editable \
+  --reinstall-package nome
 "$TARGET_DIR/.venv/bin/python" -m compileall -q "$TARGET_DIR/src/nome"
 
 if [[ "$SKIP_SERVICE_UPDATE" != "1" ]]; then

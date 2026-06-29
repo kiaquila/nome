@@ -42,8 +42,9 @@ GitHub.
   sent to the configured EC2 instance with SSM Run Command.
 - AC-004: Deploying with `rsync --delete` does not replace or delete `.env`,
   `.venv`, `data/`, or `.deploy/` on the host.
-- AC-005: The deploy script installs the current Python project, verifies that
-  it compiles, installs the managed systemd unit, and restarts `nome.service`.
+- AC-005: The deploy script force-reinstalls the current Python project even
+  when its version is unchanged, verifies that it compiles, installs the
+  managed systemd unit, and restarts `nome.service`.
 - AC-006: The workflow fails unless `nome.service` becomes active and
   `http://127.0.0.1:8000/healthz` returns a successful response.
 - AC-007: A successful deploy writes `.deploy/current_release.json` with the
