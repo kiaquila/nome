@@ -36,7 +36,7 @@ if [[ ! "$SERVICE_NAME" =~ ^[a-zA-Z0-9@_.-]+$ ]]; then
 fi
 
 if [[ ! -d "$RELEASE_SOURCE_DIR" ]]; then
-  echo "RELEASE_SOURCE_DIR does not exist: $RELEASE_SOURCE_DIR" >&2
+  echo "RELEASE_SOURCE_DIR does not exist." >&2
   exit 1
 fi
 
@@ -46,11 +46,24 @@ flock 9
 mkdir -p "$TARGET_DIR"
 
 if [[ ! -f "$TARGET_DIR/.env" ]]; then
-  echo "Runtime environment file is missing: $TARGET_DIR/.env" >&2
+  echo "Runtime environment file is missing in the target directory." >&2
   exit 1
 fi
 
-rsync -a --delete \
+mkdir -p "$DEPLOY_METADATA_DIR"
+chmod 700 "$DEPLOY_METADATA_DIR"
+DEPLOY_LOG="${DEPLOY_METADATA_DIR}/last_deploy.log"
+: > "$DEPLOY_LOG"
+chmod 600 "$DEPLOY_LOG"
+
+run_private() {
+  if ! "$@" >>"$DEPLOY_LOG" 2>&1; then
+    echo "Deploy command failed; command output remains in host-local deploy logs." >&2
+    return 1
+  fi
+}
+
+run_private rsync -a --delete \
   --exclude ".env" \
   --exclude ".env.*" \
   --exclude ".venv/" \
@@ -66,25 +79,25 @@ rsync -a --delete \
   "$RELEASE_SOURCE_DIR/" "$TARGET_DIR/"
 
 chmod 600 "$TARGET_DIR/.env"
-mkdir -p "$TARGET_DIR/data" "$DEPLOY_METADATA_DIR"
+mkdir -p "$TARGET_DIR/data"
 chmod 700 "$TARGET_DIR/data" "$DEPLOY_METADATA_DIR"
 
 if [[ ! -x "$UV_TOOL_DIR/bin/uv" ]] || ! "$UV_TOOL_DIR/bin/uv" --version | grep -Fq "uv ${UV_VERSION}"; then
   rm -rf "$UV_TOOL_DIR"
-  python3 -m venv "$UV_TOOL_DIR"
-  "$UV_TOOL_DIR/bin/python" -m pip install \
+  run_private python3 -m venv "$UV_TOOL_DIR"
+  run_private "$UV_TOOL_DIR/bin/python" -m pip install \
     --disable-pip-version-check \
     "uv==${UV_VERSION}"
 fi
 
-"$UV_TOOL_DIR/bin/uv" lock --project "$TARGET_DIR" --check
-UV_PROJECT_ENVIRONMENT="$TARGET_DIR/.venv" "$UV_TOOL_DIR/bin/uv" sync \
+run_private "$UV_TOOL_DIR/bin/uv" lock --project "$TARGET_DIR" --check
+run_private env UV_PROJECT_ENVIRONMENT="$TARGET_DIR/.venv" "$UV_TOOL_DIR/bin/uv" sync \
   --project "$TARGET_DIR" \
   --frozen \
   --no-dev \
   --no-editable \
   --reinstall-package nome
-"$TARGET_DIR/.venv/bin/python" -m compileall -q "$TARGET_DIR/src/nome"
+run_private "$TARGET_DIR/.venv/bin/python" -m compileall -q "$TARGET_DIR/src/nome"
 
 if [[ "$SKIP_SERVICE_UPDATE" != "1" ]]; then
   unit_template="$TARGET_DIR/deploy/nome.service"
@@ -155,4 +168,4 @@ metadata = {
 metadata_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2) + "\n")
 PY
 
-echo "Deployed ${RELEASE_SHA} to ${TARGET_DIR}"
+echo "Deployed ${RELEASE_SHA}"

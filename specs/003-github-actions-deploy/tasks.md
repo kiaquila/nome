@@ -14,3 +14,6 @@
 - [x] T012 Avoid streaming private service journals into GitHub Actions.
 - [x] T013 Bound SSM execution time and cancel timed-out deploy commands.
 - [x] T014 Assert `uv.lock` freshness before production dependency sync.
+- [x] T015 Mask the AWS account id in deployment credential logs.
+- [x] T016 Stop printing the production target path in deploy success output.
+- [x] T017 Keep verbose deploy command output in host-local logs.
