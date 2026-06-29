@@ -24,10 +24,10 @@ Before running the destructive sync, it rejects targets that are not dedicated
 Nome directories and target directory paths that are symlinks.
 A pinned `uv` bootstrap environment in `.deploy/` synchronizes the production
 environment exactly from the committed lockfile after asserting that the lockfile
-matches project metadata. The root `nome` package is force-reinstalled so a
-code-only release cannot reuse stale site-packages when the project version is
-unchanged. The script then compiles the Python package before touching the
-running service.
+matches project metadata. The release is first synced into a staging virtual
+environment and compiled before the live `.venv` is mutated. The root `nome`
+package is force-reinstalled so a code-only release cannot reuse stale
+site-packages when the project version is unchanged.
 
 The script renders `deploy/nome.service` with the configured absolute target
 directory, installs it under systemd, restarts the service, and waits for both

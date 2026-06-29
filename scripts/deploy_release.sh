@@ -12,6 +12,7 @@ SERVICE_NAME="${SERVICE_NAME:-nome}"
 SKIP_SERVICE_UPDATE="${SKIP_SERVICE_UPDATE:-0}"
 DEPLOY_METADATA_DIR="${TARGET_DIR}/.deploy"
 UV_TOOL_DIR="${DEPLOY_METADATA_DIR}/uv"
+STAGING_VENV="${DEPLOY_METADATA_DIR}/staging-venv"
 UV_VERSION="0.10.11"
 LOCK_FILE="/tmp/nome-deploy.lock"
 
@@ -34,6 +35,15 @@ if [[ ! "$SERVICE_NAME" =~ ^[a-zA-Z0-9@_.-]+$ ]]; then
   echo "SERVICE_NAME contains unsupported characters." >&2
   exit 1
 fi
+
+rendered_unit=""
+cleanup() {
+  rm -rf "$STAGING_VENV"
+  if [[ -n "$rendered_unit" ]]; then
+    rm -f "$rendered_unit"
+  fi
+}
+trap cleanup EXIT
 
 if [[ ! -d "$RELEASE_SOURCE_DIR" ]]; then
   echo "RELEASE_SOURCE_DIR does not exist." >&2
@@ -91,18 +101,26 @@ if [[ ! -x "$UV_TOOL_DIR/bin/uv" ]] || ! "$UV_TOOL_DIR/bin/uv" --version | grep 
 fi
 
 run_private "$UV_TOOL_DIR/bin/uv" lock --project "$TARGET_DIR" --check
+rm -rf "$STAGING_VENV"
+run_private env UV_PROJECT_ENVIRONMENT="$STAGING_VENV" "$UV_TOOL_DIR/bin/uv" sync \
+  --project "$TARGET_DIR" \
+  --frozen \
+  --no-dev \
+  --no-editable \
+  --reinstall-package nome
+run_private "$STAGING_VENV/bin/python" -m compileall -q "$TARGET_DIR/src/nome"
+rm -rf "$STAGING_VENV"
+
 run_private env UV_PROJECT_ENVIRONMENT="$TARGET_DIR/.venv" "$UV_TOOL_DIR/bin/uv" sync \
   --project "$TARGET_DIR" \
   --frozen \
   --no-dev \
   --no-editable \
   --reinstall-package nome
-run_private "$TARGET_DIR/.venv/bin/python" -m compileall -q "$TARGET_DIR/src/nome"
 
 if [[ "$SKIP_SERVICE_UPDATE" != "1" ]]; then
   unit_template="$TARGET_DIR/deploy/nome.service"
   rendered_unit=$(mktemp)
-  trap 'rm -f "$rendered_unit"' EXIT
 
   TARGET_DIR="$TARGET_DIR" UNIT_TEMPLATE="$unit_template" RENDERED_UNIT="$rendered_unit" python3 - <<'PY'
 import os

@@ -73,9 +73,10 @@ checks that the file exists; it does not print, upload, replace, or delete it.
 4. `scripts/deploy_release.sh` synchronizes tracked files into the stable target
    directory while preserving `.env`, `.venv`, `data/`, deploy metadata,
    Telethon sessions, and SQLite files.
-5. The script verifies that `uv.lock` matches project metadata, synchronizes
-   production dependencies from the committed lockfile, compiles `src/nome`,
-   installs the managed systemd unit, and restarts `nome.service`.
+5. The script verifies that `uv.lock` matches project metadata, validates the
+   release in a staging virtual environment, compiles `src/nome`, then
+   synchronizes the live production virtual environment from the committed
+   lockfile, installs the managed systemd unit, and restarts `nome.service`.
 6. The release succeeds only when systemd reports the service active and the
    loopback `/healthz` endpoint responds successfully.
 7. The deployed revision is recorded in `.deploy/current_release.json`.
