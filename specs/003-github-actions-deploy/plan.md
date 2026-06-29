@@ -19,7 +19,7 @@ change code that runs with the production workflow's OIDC permission.
 `scripts/deploy_release.sh` serializes deployments with `flock`, syncs tracked
 release files into the stable target directory, and excludes host-owned state.
 Before running the destructive sync, it rejects targets that are not dedicated
-Nome directories.
+Nome directories and target directory paths that are symlinks.
 A pinned `uv` bootstrap environment in `.deploy/` synchronizes the production
 environment exactly from the committed lockfile. The root `nome` package is
 force-reinstalled so a code-only release cannot reuse stale site-packages when

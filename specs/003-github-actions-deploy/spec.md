@@ -42,7 +42,8 @@ GitHub.
   sent to the configured EC2 instance with SSM Run Command.
 - AC-004: Deploying with `rsync --delete` does not replace or delete `.env`,
   `.venv`, `data/`, or `.deploy/` on the host, and the host script rejects
-  broad parent target directories before the destructive sync can run.
+  broad parent or symlinked target directories before the destructive sync can
+  run.
 - AC-005: The deploy script force-reinstalls the current Python project even
   when its version is unchanged, verifies that it compiles, installs the
   managed systemd unit, and restarts `nome.service`.

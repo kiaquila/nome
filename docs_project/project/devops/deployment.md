@@ -77,9 +77,9 @@ Deployments are serialized in GitHub Actions and again on the host with a file
 lock. The current service remains loopback-only while Nome still contains its
 webhook adapter. Long polling is a separate runtime change.
 
-The host script refuses broad parent directories such as `/home/ubuntu`; the
-target must be a dedicated directory whose final path segment is `nome` before
-the destructive `rsync --delete` step can run.
+The host script refuses broad parent directories such as `/home/ubuntu` and
+symlinked target paths. The target must be a dedicated directory whose final
+path segment is `nome` before the destructive `rsync --delete` step can run.
 
 ## Operations
 

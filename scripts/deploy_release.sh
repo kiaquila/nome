@@ -25,6 +25,11 @@ if [[ "${TARGET_DIR##*/}" != "nome" ]]; then
   exit 1
 fi
 
+if [[ -L "$TARGET_DIR" ]]; then
+  echo "TARGET_DIR must not be a symlink." >&2
+  exit 1
+fi
+
 if [[ ! "$SERVICE_NAME" =~ ^[a-zA-Z0-9@_.-]+$ ]]; then
   echo "SERVICE_NAME contains unsupported characters." >&2
   exit 1
