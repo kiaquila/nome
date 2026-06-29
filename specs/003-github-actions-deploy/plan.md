@@ -8,10 +8,12 @@ OIDC provider, uploads the archive to a private S3 bucket, and creates a
 short-lived presigned download URL.
 
 The workflow sends a small bootstrap script to the existing EC2 instance with
-SSM Run Command. The bootstrap downloads and extracts the archive, then runs the
-repository-owned deployment script as the `ubuntu` user. Run Command receives a
-bounded start deadline and shell execution timeout, and the workflow polls
-through that full window before cancelling a timed-out command.
+SSM Run Command. The bootstrap downloads the archive into a temporary parent
+directory, extracts it into a child release tree that excludes the downloaded
+tarball, then runs the repository-owned deployment script as the `ubuntu` user.
+Run Command receives a bounded start deadline and shell execution timeout, and
+the workflow polls through that full window before cancelling a timed-out
+command.
 
 External actions are pinned to full release commit SHAs so mutable tags cannot
 change code that runs with the production workflow's OIDC permission.

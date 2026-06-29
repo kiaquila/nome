@@ -70,7 +70,9 @@ checks that the file exists; it does not print, upload, replace, or delete it.
 1. GitHub archives the exact checked-out Git revision.
 2. The archive is uploaded to S3 and exposed to the instance with a one-hour
    presigned URL.
-3. SSM downloads and extracts the archive into a temporary host directory.
+3. SSM downloads the archive into a temporary host directory and extracts it
+   into a child release tree, so the downloaded tarball is not part of the
+   synchronized release source.
 4. `scripts/deploy_release.sh` synchronizes tracked files into the stable target
    directory while preserving `.env`, `.venv`, `data/`, deploy metadata,
    Telethon sessions, and SQLite files.

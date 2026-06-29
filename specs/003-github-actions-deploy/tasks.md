@@ -20,3 +20,4 @@
 - [x] T018 Suppress successful S3 upload destinations in deploy logs.
 - [x] T019 Validate releases in a staging venv before mutating live `.venv`.
 - [x] T020 Keep deployment coordinates in masked GitHub Actions secrets.
+- [x] T021 Keep the downloaded archive outside the synchronized release tree.

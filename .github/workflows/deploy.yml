@@ -113,9 +113,10 @@ jobs:
 
           tmp_dir="/tmp/nome-deploy-${RELEASE_SHA}"
           archive_path="${tmp_dir}/release.tar.gz"
+          release_dir="${tmp_dir}/release"
 
           rm -rf "$tmp_dir"
-          mkdir -p "$tmp_dir"
+          mkdir -p "$release_dir"
           trap 'rm -rf "$tmp_dir"' EXIT
 
           ARCHIVE_PATH="$archive_path" RELEASE_URL="$RELEASE_URL" python3 - <<'PY'
@@ -125,14 +126,14 @@ jobs:
           urllib.request.urlretrieve(os.environ["RELEASE_URL"], os.environ["ARCHIVE_PATH"])
           PY
 
-          tar -xzf "$archive_path" -C "$tmp_dir"
-          chmod +x "$tmp_dir/scripts/deploy_release.sh"
+          tar -xzf "$archive_path" -C "$release_dir"
+          chmod +x "$release_dir/scripts/deploy_release.sh"
 
           sudo -u ubuntu -H env \
             TARGET_DIR="$DEPLOY_TARGET_DIR" \
             RELEASE_SHA="$RELEASE_SHA" \
-            RELEASE_SOURCE_DIR="$tmp_dir" \
-            bash "$tmp_dir/scripts/deploy_release.sh"
+            RELEASE_SOURCE_DIR="$release_dir" \
+            bash "$release_dir/scripts/deploy_release.sh"
           EOF
 
           remote_script_b64=$(base64 < "$RUNNER_TEMP/remote-deploy.sh" | tr -d '\n')
