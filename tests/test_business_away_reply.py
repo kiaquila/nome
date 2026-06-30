@@ -249,6 +249,27 @@ async def test_inbound_after_owner_active_window_schedules_reply(
 
 
 @pytest.mark.asyncio
+async def test_late_owner_update_cancels_pending_within_owner_active_window(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(
+        _inbound_update(message_id=13, date=1_180),
+        now=1_180,
+    )
+    await update_handler.handle_update(
+        _owner_business_reply(message_id=12, date=1_120),
+        now=1_200,
+    )
+
+    assert storage.due_replies(now=1_480) == []
+    assert await update_handler.process_due_replies(now=1_480) == 0
+    assert telegram.sent == []
+    assert storage.unread_chats()
+
+
+@pytest.mark.asyncio
 async def test_older_inbound_does_not_move_pending_reply_earlier(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -292,22 +313,23 @@ async def test_older_owner_reply_does_not_move_owner_timestamp_back(
 
 
 @pytest.mark.asyncio
-async def test_older_owner_reply_does_not_cancel_newer_pending_reply(
+async def test_older_owner_reply_outside_active_window_does_not_cancel_newer_pending_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
     update_handler, storage, _telegram = handler
+    outside_active_window = 1_200 + 12 * 60 * 60 + 100
     await update_handler.handle_update(_connection_update(), now=1_000)
     await update_handler.handle_update(
-        _inbound_update(message_id=31, date=1_300),
-        now=2_000,
+        _inbound_update(message_id=31, date=outside_active_window),
+        now=outside_active_window,
     )
     await update_handler.handle_update(
         _owner_business_reply(message_id=30, date=1_200),
-        now=2_001,
+        now=outside_active_window + 1,
     )
 
-    assert storage.due_replies(now=1_599) == []
-    assert storage.due_replies(now=1_600)
+    assert storage.due_replies(now=outside_active_window + 299) == []
+    assert storage.due_replies(now=outside_active_window + 300)
 
 
 @pytest.mark.asyncio

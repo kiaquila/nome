@@ -183,6 +183,7 @@ class UpdateHandler:
                 chat_username=chat_identity.username,
                 chat_display=chat_identity.display,
                 now=message_time,
+                owner_active_window_seconds=self.settings.owner_active_window_seconds,
             )
             return
 
