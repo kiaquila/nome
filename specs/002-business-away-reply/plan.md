@@ -34,7 +34,10 @@ When `business_connection` arrives, store only allowed owner connections. When
 - Ignore non-private chats.
 - Treat messages from the owner as manual replies and cancel pending work.
 - Treat messages from others as inbound messages, update unread state, and
-  schedule a pending reply unless the twelve-hour cooldown is still active.
+  schedule a pending reply (after a three-minute quiet delay) unless the
+  twelve-hour cooldown is still active or the owner has herself messaged that
+  chat within the twelve-hour owner-active window. In the owner-active case the
+  inbound is still recorded for status reporting, but no away reply is scheduled.
 
 A background worker polls due pending replies and sends them through
 `sendMessage` with `business_connection_id`.

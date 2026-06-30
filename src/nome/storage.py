@@ -26,6 +26,7 @@ class PendingReply:
     chat_username: str | None
     chat_display: str
     inbound_message_id: int
+    inbound_at: int
     due_at: int
     claim_token: str | None = None
 
@@ -100,6 +101,7 @@ class SQLiteStorage:
                   chat_username TEXT,
                   chat_display TEXT NOT NULL,
                   inbound_message_id INTEGER NOT NULL,
+                  inbound_at INTEGER NOT NULL,
                   due_at INTEGER NOT NULL,
                   created_at INTEGER NOT NULL,
                   updated_at INTEGER NOT NULL,
@@ -133,6 +135,15 @@ class SQLiteStorage:
     def _ensure_pending_reply_claim_columns(self, connection: sqlite3.Connection) -> None:
         rows = connection.execute("PRAGMA table_info(pending_replies)").fetchall()
         columns = {str(row["name"]) for row in rows}
+        if "inbound_at" not in columns:
+            connection.execute("ALTER TABLE pending_replies ADD COLUMN inbound_at INTEGER")
+            connection.execute(
+                """
+                UPDATE pending_replies
+                SET inbound_at = created_at
+                WHERE inbound_at IS NULL
+                """
+            )
         if "claim_token" not in columns:
             connection.execute("ALTER TABLE pending_replies ADD COLUMN claim_token TEXT")
         if "claim_expires_at" not in columns:
@@ -214,6 +225,7 @@ class SQLiteStorage:
         now: int,
         delay_seconds: int,
         cooldown_seconds: int,
+        owner_active_window_seconds: int = 0,
     ) -> ScheduleResult:
         due_at = now + delay_seconds
         with self._connect() as connection:
@@ -287,17 +299,28 @@ class SQLiteStorage:
                     cooldown_until=last_auto_reply_at + cooldown_seconds,
                 )
 
+            # When the owner has messaged this chat within the active window, the
+            # owner is already engaged; Nome stays silent so it only auto-replies
+            # to genuinely new conversations the owner has not started. The inbound
+            # is still recorded above so it surfaces in the owner status report.
+            if (
+                last_owner_reply_at is not None
+                and now - last_owner_reply_at < owner_active_window_seconds
+            ):
+                return ScheduleResult(scheduled=False, due_at=None)
+
             pending_cursor = connection.execute(
                 """
                 INSERT INTO pending_replies (
                   business_connection_id, chat_id, chat_username, chat_display,
-                  inbound_message_id, due_at, created_at, updated_at
+                  inbound_message_id, inbound_at, due_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(business_connection_id, chat_id) DO UPDATE SET
                   chat_username = excluded.chat_username,
                   chat_display = excluded.chat_display,
                   inbound_message_id = excluded.inbound_message_id,
+                  inbound_at = excluded.inbound_at,
                   due_at = excluded.due_at,
                   updated_at = excluded.updated_at,
                   claim_token = NULL,
@@ -315,6 +338,7 @@ class SQLiteStorage:
                     chat_username,
                     chat_display,
                     inbound_message_id,
+                    now,
                     due_at,
                     now,
                     now,
@@ -333,6 +357,7 @@ class SQLiteStorage:
         chat_username: str | None,
         chat_display: str,
         now: int,
+        owner_active_window_seconds: int = 0,
     ) -> None:
         with self._connect() as connection:
             connection.execute(
@@ -382,6 +407,22 @@ class SQLiteStorage:
                 """,
                 (business_connection_id, chat_id, business_connection_id, chat_id, now),
             )
+            if owner_active_window_seconds > 0:
+                connection.execute(
+                    """
+                    DELETE FROM pending_replies
+                    WHERE business_connection_id = ? AND chat_id = ?
+                      AND inbound_at >= ?
+                      AND inbound_at - ? < ?
+                    """,
+                    (
+                        business_connection_id,
+                        chat_id,
+                        now,
+                        now,
+                        owner_active_window_seconds,
+                    ),
+                )
 
     def cancel_pending_reply(self, *, business_connection_id: str, chat_id: int) -> None:
         with self._connect() as connection:
@@ -420,6 +461,7 @@ class SQLiteStorage:
                 chat_username=_optional_str(row["chat_username"]),
                 chat_display=str(row["chat_display"]),
                 inbound_message_id=int(row["inbound_message_id"]),
+                inbound_at=int(row["inbound_at"]),
                 due_at=int(row["due_at"]),
                 claim_token=_optional_str(row["claim_token"]),
             )
@@ -464,6 +506,7 @@ class SQLiteStorage:
             chat_username=pending.chat_username,
             chat_display=pending.chat_display,
             inbound_message_id=pending.inbound_message_id,
+            inbound_at=pending.inbound_at,
             due_at=pending.due_at,
             claim_token=claim_token,
         )

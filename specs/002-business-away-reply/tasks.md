@@ -21,3 +21,6 @@
   `InputUser` values into selected Business recipients.
 - [x] T014 Address fourth Codex review finding: only return owner status reports
   in private bot chats.
+- [x] T015 Shorten the away-reply delay to three minutes and suppress away
+  replies while the owner has herself messaged the chat within the twelve-hour
+  owner-active window.
