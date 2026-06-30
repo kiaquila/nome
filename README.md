@@ -2,7 +2,7 @@
 
 Nome is a private Telegram Business personal assistant bot. In v1 it can act as
 a Telegram Chat Automation assistant for selected personal chats: if the owner
-does not answer for five minutes, Nome sends one clear away reply on the
+does not answer for three minutes, Nome sends one clear away reply on the
 owner's behalf and will not repeat that reply to the same chat for twelve hours.
 
 The repository keeps feature memory in `specs/` and durable product context in

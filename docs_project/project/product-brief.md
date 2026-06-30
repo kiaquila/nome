@@ -15,7 +15,7 @@ are implemented.
 ## First Capabilities
 
 - Reply through Telegram Business Chat Automation when the owner is busy and a
-  selected private chat has waited for five minutes.
+  selected private chat has waited for three minutes.
 - Report recent inbound private chats, away replies, and inferred unread chats
   through an owner-only Telegram command.
 - Capture short notes, tasks, and reminders from Telegram messages.
