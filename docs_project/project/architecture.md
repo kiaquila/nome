@@ -40,6 +40,14 @@ update kinds, records allowed Business connections for the single owner, and
 turns private `business_message` updates into scheduling decisions. Message
 text is not stored. Owner-sent Business messages cancel pending away replies.
 
+An inbound message schedules one away reply after a three-minute quiet delay
+(`NOME_AUTO_REPLY_DELAY_SECONDS`, default 180). Nome also stays silent when the
+owner has messaged that chat within the owner-active window
+(`NOME_OWNER_ACTIVE_WINDOW_HOURS`, default 12): a conversation the owner started
+recently is hers to continue, so Nome only auto-replies to genuinely new
+inbound threads. The contact's message is still recorded for the status report
+even when no away reply is scheduled.
+
 The polling worker deletes any previously configured Telegram webhook on
 startup so `getUpdates` cannot race against a stale subscription, then keeps
 the highest acknowledged `update_id` in memory and advances the offset whether

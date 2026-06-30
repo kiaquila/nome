@@ -214,6 +214,7 @@ class SQLiteStorage:
         now: int,
         delay_seconds: int,
         cooldown_seconds: int,
+        owner_active_window_seconds: int = 0,
     ) -> ScheduleResult:
         due_at = now + delay_seconds
         with self._connect() as connection:
@@ -286,6 +287,16 @@ class SQLiteStorage:
                     due_at=None,
                     cooldown_until=last_auto_reply_at + cooldown_seconds,
                 )
+
+            # When the owner has messaged this chat within the active window, the
+            # owner is already engaged; Nome stays silent so it only auto-replies
+            # to genuinely new conversations the owner has not started. The inbound
+            # is still recorded above so it surfaces in the owner status report.
+            if (
+                last_owner_reply_at is not None
+                and now - last_owner_reply_at < owner_active_window_seconds
+            ):
+                return ScheduleResult(scheduled=False, due_at=None)
 
             pending_cursor = connection.execute(
                 """

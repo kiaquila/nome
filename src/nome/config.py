@@ -42,8 +42,9 @@ class Settings:
     bot_token: str
     database_path: Path
     owner_username: str = OWNER_USERNAME
-    auto_reply_delay_seconds: int = 300
+    auto_reply_delay_seconds: int = 180
     auto_reply_cooldown_hours: int = 12
+    owner_active_window_hours: int = 12
     auto_reply_text: str = DEFAULT_AUTO_REPLY_TEXT
     worker_poll_interval_seconds: float = 5.0
     long_poll_timeout_seconds: int = DEFAULT_LONG_POLL_TIMEOUT_SECONDS
@@ -78,8 +79,9 @@ class Settings:
         return cls(
             bot_token=bot_token,
             database_path=Path(os.getenv("NOME_DATABASE_PATH", "data/nome.sqlite3")),
-            auto_reply_delay_seconds=int(os.getenv("NOME_AUTO_REPLY_DELAY_SECONDS", "300")),
+            auto_reply_delay_seconds=int(os.getenv("NOME_AUTO_REPLY_DELAY_SECONDS", "180")),
             auto_reply_cooldown_hours=int(os.getenv("NOME_AUTO_REPLY_COOLDOWN_HOURS", "12")),
+            owner_active_window_hours=int(os.getenv("NOME_OWNER_ACTIVE_WINDOW_HOURS", "12")),
             auto_reply_text=os.getenv("NOME_AUTO_REPLY_TEXT", DEFAULT_AUTO_REPLY_TEXT),
             worker_poll_interval_seconds=float(os.getenv("NOME_WORKER_POLL_SECONDS", "5")),
             long_poll_timeout_seconds=long_poll_timeout_seconds,
@@ -98,6 +100,10 @@ class Settings:
     @property
     def auto_reply_cooldown_seconds(self) -> int:
         return self.auto_reply_cooldown_hours * 60 * 60
+
+    @property
+    def owner_active_window_seconds(self) -> int:
+        return self.owner_active_window_hours * 60 * 60
 
     @property
     def normalized_owner_username(self) -> str:

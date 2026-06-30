@@ -195,6 +195,7 @@ class UpdateHandler:
             now=message_time,
             delay_seconds=self.settings.auto_reply_delay_seconds,
             cooldown_seconds=self.settings.auto_reply_cooldown_seconds,
+            owner_active_window_seconds=self.settings.owner_active_window_seconds,
         )
 
     async def _fetch_allowed_business_connection(

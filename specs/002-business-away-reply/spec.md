@@ -3,9 +3,11 @@
 ## Summary
 
 Nome v1 runs as a private Telegram Business chat automation assistant. When the
-owner does not answer selected personal chats for five minutes, Nome sends one
+owner does not answer selected personal chats for three minutes, Nome sends one
 clear away reply on the owner's behalf and does not repeat that reply to the
-same chat for twelve hours.
+same chat for twelve hours. Nome also stays silent when the owner has herself
+messaged that chat within the last twelve hours, so it only auto-replies to
+genuinely new conversations the owner has not already started.
 
 ## Goal
 
@@ -43,7 +45,8 @@ enough status visibility to audit what it did.
 - AC-002: Business updates for a connection whose owner username is not
   `ks_aquila` are ignored.
 - AC-003: For an inbound private Business message from another user, Nome
-  schedules an away reply for five minutes later.
+  schedules an away reply for three minutes later
+  (`NOME_AUTO_REPLY_DELAY_SECONDS`, default 180).
 - AC-004: If the owner sends a Business message in that chat before the due
   time, Nome cancels the pending away reply and marks the chat read.
 - AC-005: Nome sends at most one away reply to the same Business chat within a
@@ -58,6 +61,10 @@ enough status visibility to audit what it did.
   `reply` and `read_messages` rights.
 - AC-009: Local preflight runs Python formatting, linting, type checking, tests,
   and repository baseline checks.
+- AC-010: If the owner has sent a Business message in a chat within the
+  owner-active window (`NOME_OWNER_ACTIVE_WINDOW_HOURS`, default 12), a later
+  inbound message from that contact does not schedule an away reply, though the
+  inbound is still recorded for the status report.
 
 ## Privacy Requirements
 

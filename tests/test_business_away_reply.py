@@ -204,21 +204,48 @@ async def test_older_inbound_after_owner_reply_does_not_schedule_reply(
 
 
 @pytest.mark.asyncio
-async def test_same_second_inbound_after_owner_reply_can_schedule_reply(
+async def test_inbound_within_owner_active_window_does_not_schedule_reply(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    # The owner messaged the chat first; while that activity is recent Nome stays
+    # silent even though the contact later writes back.
+    await update_handler.handle_update(
+        _owner_business_reply(message_id=12, date=1_120),
+        now=1_120,
+    )
+    await update_handler.handle_update(
+        _inbound_update(message_id=13, date=1_120),
+        now=1_120,
+    )
+
+    assert storage.due_replies(now=100_000) == []
+    assert await update_handler.process_due_replies(now=100_000) == 0
+    assert telegram.sent == []
+    # The contact's message is still tracked so it surfaces in the status report.
+    assert storage.unread_chats()
+
+
+@pytest.mark.asyncio
+async def test_inbound_after_owner_active_window_schedules_reply(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
     update_handler, storage, _telegram = handler
     await update_handler.handle_update(_connection_update(), now=1_000)
     await update_handler.handle_update(
         _owner_business_reply(message_id=12, date=1_120),
-        now=2_000,
+        now=1_120,
     )
+    # Once the twelve-hour owner-active window has elapsed, a fresh inbound is
+    # treated as a new conversation and an away reply is scheduled again.
+    after_window = 1_120 + 12 * 60 * 60
     await update_handler.handle_update(
-        _inbound_update(message_id=13, date=1_120),
-        now=2_001,
+        _inbound_update(message_id=13, date=after_window),
+        now=after_window,
     )
 
-    assert storage.due_replies(now=1_420)
+    assert storage.due_replies(now=after_window + 300)
 
 
 @pytest.mark.asyncio
@@ -530,6 +557,19 @@ def test_from_env_defaults_polling_settings(
 
     assert settings.long_poll_timeout_seconds == 50
     assert settings.polling_error_backoff_seconds == 5.0
+
+
+def test_from_env_defaults_reply_timing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(tmp_path / "nome.sqlite3"))
+    monkeypatch.delenv("NOME_AUTO_REPLY_DELAY_SECONDS", raising=False)
+    monkeypatch.delenv("NOME_OWNER_ACTIVE_WINDOW_HOURS", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.auto_reply_delay_seconds == 180
+    assert settings.owner_active_window_hours == 12
+    assert settings.owner_active_window_seconds == 43_200
 
 
 def test_from_env_rejects_negative_long_poll_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
