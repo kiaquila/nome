@@ -1,0 +1,4 @@
+# Governance/CI tooling bootstrapped from unicorn-hub — not product code.
+# Exclude it from GitHub Linguist language stats so the language bar reflects
+# the Python bot in src/, not the Node helper scripts.
+scripts/** linguist-vendored
