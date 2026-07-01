@@ -192,6 +192,7 @@ async def test_default_allowed_updates_cover_business_intake() -> None:
     assert "business_connection" in DEFAULT_ALLOWED_UPDATES
     assert "business_message" in DEFAULT_ALLOWED_UPDATES
     assert "message" in DEFAULT_ALLOWED_UPDATES
+    assert "chat_member" in DEFAULT_ALLOWED_UPDATES
 
 
 @pytest.mark.asyncio
@@ -240,6 +241,25 @@ async def test_delete_webhook_posts_drop_flag() -> None:
 
     assert captured["path"].endswith("/deleteWebhook")
     assert b'"drop_pending_updates":true' in captured["payload"]
+
+
+@pytest.mark.asyncio
+async def test_get_chat_member_count_posts_chat_id() -> None:
+    captured: dict[str, Any] = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["payload"] = request.read()
+        return httpx.Response(200, json={"ok": True, "result": 89})
+
+    transport = httpx.MockTransport(handle)
+    async with httpx.AsyncClient(transport=transport) as client:
+        telegram = TelegramBotAPI(bot_token="test-token", client=client)
+        count = await telegram.get_chat_member_count(chat_id="@vibecodesh")
+
+    assert count == 89
+    assert captured["path"].endswith("/getChatMemberCount")
+    assert b'"chat_id":"@vibecodesh"' in captured["payload"]
 
 
 async def _wait_until(predicate: Any, *, timeout: float = 2.0) -> None:

@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from nome.channel_subscribers import ChangeKind, ChannelMemberIdentity
+
 
 @dataclass(frozen=True)
 class BusinessConnection:
@@ -59,6 +61,37 @@ class ScheduleResult:
     scheduled: bool
     due_at: int | None
     cooldown_until: int | None = None
+
+
+@dataclass(frozen=True)
+class ChannelMemberChangeResult:
+    kind: ChangeKind
+    user: ChannelMemberIdentity
+    previous_user: ChannelMemberIdentity | None
+    active_human_count: int
+    notify_immediately: bool
+    threshold_reached_now: bool
+
+
+@dataclass(frozen=True)
+class ChannelDigest:
+    channel_key: str
+    channel_title: str
+    active_human_count: int
+    joined_count: int
+    left_count: int
+    profile_update_count: int
+    drift_count: int
+    period_started_at: int | None
+
+
+@dataclass(frozen=True)
+class ChannelDrift:
+    channel_key: str
+    channel_title: str
+    active_human_count: int
+    telegram_human_count: int
+    telegram_raw_count: int
 
 
 class SQLiteStorage:
@@ -127,6 +160,40 @@ class SQLiteStorage:
                   inbound_message_id INTEGER NOT NULL,
                   sent_message_id INTEGER,
                   sent_at INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS channel_members (
+                  channel_key TEXT NOT NULL,
+                  user_id INTEGER NOT NULL,
+                  username TEXT,
+                  first_name TEXT,
+                  last_name TEXT,
+                  is_bot INTEGER NOT NULL DEFAULT 0,
+                  joined_at INTEGER NOT NULL,
+                  updated_at INTEGER NOT NULL,
+                  PRIMARY KEY (channel_key, user_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS channel_tracking_state (
+                  channel_key TEXT PRIMARY KEY,
+                  channel_id INTEGER,
+                  channel_username TEXT,
+                  channel_title TEXT NOT NULL,
+                  active_human_count INTEGER NOT NULL DEFAULT 0,
+                  telegram_member_count INTEGER,
+                  telegram_human_count INTEGER,
+                  telegram_count_checked_at INTEGER,
+                  joined_count INTEGER NOT NULL DEFAULT 0,
+                  left_count INTEGER NOT NULL DEFAULT 0,
+                  profile_update_count INTEGER NOT NULL DEFAULT 0,
+                  drift_count INTEGER NOT NULL DEFAULT 0,
+                  digest_period_started_at INTEGER,
+                  last_digest_at INTEGER,
+                  next_count_check_at INTEGER,
+                  last_drift_delta INTEGER NOT NULL DEFAULT 0,
+                  last_drift_reported_at INTEGER,
+                  threshold_reached_at INTEGER,
+                  updated_at INTEGER NOT NULL
                 );
                 """
             )
@@ -624,6 +691,384 @@ class SQLiteStorage:
                 ),
             )
 
+    def import_channel_roster(
+        self,
+        *,
+        channel_key: str,
+        channel_id: int | None,
+        channel_username: str | None,
+        channel_title: str,
+        members: list[ChannelMemberIdentity],
+        now: int,
+        threshold: int,
+    ) -> int:
+        human_members = [member for member in members if not member.is_bot]
+        threshold_reached_at = now if len(human_members) >= threshold else None
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM channel_members WHERE channel_key = ?",
+                (channel_key,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO channel_members (
+                  channel_key, user_id, username, first_name, last_name, is_bot,
+                  joined_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        channel_key,
+                        member.user_id,
+                        member.username,
+                        member.first_name,
+                        member.last_name,
+                        int(member.is_bot),
+                        now,
+                        now,
+                    )
+                    for member in human_members
+                ],
+            )
+            self._ensure_channel_tracking_state(
+                connection,
+                channel_key=channel_key,
+                channel_id=channel_id,
+                channel_username=channel_username,
+                channel_title=channel_title,
+                active_human_count=len(human_members),
+                threshold_reached_at=threshold_reached_at,
+                now=now,
+            )
+        return len(human_members)
+
+    def record_channel_member_change(
+        self,
+        *,
+        channel_key: str,
+        channel_id: int,
+        channel_username: str | None,
+        channel_title: str,
+        kind: ChangeKind,
+        user: ChannelMemberIdentity,
+        now: int,
+        threshold: int,
+    ) -> ChannelMemberChangeResult | None:
+        if user.is_bot:
+            return None
+
+        with self._connect() as connection:
+            previous_user = self._get_channel_member_identity(
+                connection,
+                channel_key=channel_key,
+                user_id=user.user_id,
+            )
+            before_count = self._channel_human_count(connection, channel_key=channel_key)
+            state = connection.execute(
+                """
+                SELECT threshold_reached_at
+                FROM channel_tracking_state
+                WHERE channel_key = ?
+                """,
+                (channel_key,),
+            ).fetchone()
+            threshold_was_reached = (
+                state is not None and _optional_int(state["threshold_reached_at"]) is not None
+            )
+
+            result_kind = kind
+            if kind == "joined":
+                if previous_user is None:
+                    self._upsert_channel_member(
+                        connection,
+                        channel_key=channel_key,
+                        user=user,
+                        joined_at=now,
+                        updated_at=now,
+                    )
+                    after_count = before_count + 1
+                elif not user.same_public_profile(previous_user):
+                    self._upsert_channel_member(
+                        connection,
+                        channel_key=channel_key,
+                        user=user,
+                        joined_at=now,
+                        updated_at=now,
+                    )
+                    result_kind = "profile_updated"
+                    after_count = before_count
+                else:
+                    return None
+            elif kind == "left":
+                connection.execute(
+                    """
+                    DELETE FROM channel_members
+                    WHERE channel_key = ? AND user_id = ?
+                    """,
+                    (channel_key, user.user_id),
+                )
+                after_count = (
+                    max(before_count - 1, 0) if previous_user is not None else before_count
+                )
+            else:
+                if previous_user is None:
+                    self._upsert_channel_member(
+                        connection,
+                        channel_key=channel_key,
+                        user=user,
+                        joined_at=now,
+                        updated_at=now,
+                    )
+                    after_count = before_count + 1
+                    self._ensure_channel_tracking_state(
+                        connection,
+                        channel_key=channel_key,
+                        channel_id=channel_id,
+                        channel_username=channel_username,
+                        channel_title=channel_title,
+                        active_human_count=after_count,
+                        threshold_reached_at=now if after_count >= threshold else None,
+                        now=now,
+                    )
+                    return None
+                if user.same_public_profile(previous_user):
+                    return None
+                self._upsert_channel_member(
+                    connection,
+                    channel_key=channel_key,
+                    user=user,
+                    joined_at=now,
+                    updated_at=now,
+                )
+                after_count = before_count
+
+            threshold_reached_now = not threshold_was_reached and after_count >= threshold
+            notify_immediately = not threshold_was_reached
+            aggregate = not notify_immediately
+            joined_increment = int(aggregate and result_kind == "joined")
+            left_increment = int(aggregate and result_kind == "left")
+            profile_increment = int(aggregate and result_kind == "profile_updated")
+            self._ensure_channel_tracking_state(
+                connection,
+                channel_key=channel_key,
+                channel_id=channel_id,
+                channel_username=channel_username,
+                channel_title=channel_title,
+                active_human_count=after_count,
+                threshold_reached_at=now if threshold_reached_now else None,
+                now=now,
+            )
+            if aggregate:
+                connection.execute(
+                    """
+                    UPDATE channel_tracking_state
+                    SET joined_count = joined_count + ?,
+                        left_count = left_count + ?,
+                        profile_update_count = profile_update_count + ?,
+                        digest_period_started_at = CASE
+                          WHEN digest_period_started_at IS NULL THEN ?
+                          ELSE digest_period_started_at
+                        END,
+                        updated_at = ?
+                    WHERE channel_key = ?
+                    """,
+                    (
+                        joined_increment,
+                        left_increment,
+                        profile_increment,
+                        now,
+                        now,
+                        channel_key,
+                    ),
+                )
+
+        return ChannelMemberChangeResult(
+            kind=result_kind,
+            user=user,
+            previous_user=previous_user,
+            active_human_count=after_count,
+            notify_immediately=notify_immediately,
+            threshold_reached_now=threshold_reached_now,
+        )
+
+    def due_channel_digest(
+        self,
+        *,
+        channel_key: str,
+        now: int,
+        interval_seconds: int,
+    ) -> ChannelDigest | None:
+        if interval_seconds <= 0:
+            return None
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM channel_tracking_state
+                WHERE channel_key = ?
+                  AND threshold_reached_at IS NOT NULL
+                """,
+                (channel_key,),
+            ).fetchone()
+        if row is None:
+            return None
+        last_digest_at = _optional_int(row["last_digest_at"])
+        period_started_at = _optional_int(row["digest_period_started_at"])
+        due_after = last_digest_at if last_digest_at is not None else period_started_at
+        if due_after is None:
+            due_after = int(row["threshold_reached_at"])
+        if now - due_after < interval_seconds:
+            return None
+        return ChannelDigest(
+            channel_key=channel_key,
+            channel_title=str(row["channel_title"]),
+            active_human_count=int(row["active_human_count"]),
+            joined_count=int(row["joined_count"]),
+            left_count=int(row["left_count"]),
+            profile_update_count=int(row["profile_update_count"]),
+            drift_count=int(row["drift_count"]),
+            period_started_at=period_started_at,
+        )
+
+    def mark_channel_digest_sent(self, *, channel_key: str, now: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE channel_tracking_state
+                SET joined_count = 0,
+                    left_count = 0,
+                    profile_update_count = 0,
+                    drift_count = 0,
+                    digest_period_started_at = ?,
+                    last_digest_at = ?,
+                    updated_at = ?
+                WHERE channel_key = ?
+                """,
+                (now, now, now, channel_key),
+            )
+
+    def channel_count_check_due(
+        self,
+        *,
+        channel_key: str,
+        now: int,
+        interval_seconds: int,
+    ) -> bool:
+        if interval_seconds <= 0:
+            return False
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT next_count_check_at
+                FROM channel_tracking_state
+                WHERE channel_key = ?
+                """,
+                (channel_key,),
+            ).fetchone()
+        next_check_at = _optional_int(row["next_count_check_at"]) if row is not None else None
+        return next_check_at is None or next_check_at <= now
+
+    def channel_title(self, *, channel_key: str, default: str) -> str:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT channel_title
+                FROM channel_tracking_state
+                WHERE channel_key = ?
+                """,
+                (channel_key,),
+            ).fetchone()
+        if row is None:
+            return default
+        return str(row["channel_title"])
+
+    def record_channel_count_check(
+        self,
+        *,
+        channel_key: str,
+        channel_id: int | None,
+        channel_username: str | None,
+        channel_title: str,
+        telegram_member_count: int,
+        telegram_human_count: int,
+        next_check_at: int,
+        now: int,
+    ) -> ChannelDrift | None:
+        with self._connect() as connection:
+            active_human_count = self._channel_human_count(connection, channel_key=channel_key)
+            row = connection.execute(
+                """
+                SELECT last_drift_delta, threshold_reached_at
+                FROM channel_tracking_state
+                WHERE channel_key = ?
+                """,
+                (channel_key,),
+            ).fetchone()
+            last_delta = int(row["last_drift_delta"]) if row is not None else 0
+            threshold_reached = (
+                row is not None and _optional_int(row["threshold_reached_at"]) is not None
+            )
+            delta = telegram_human_count - active_human_count
+            new_drift = delta != 0 and delta != last_delta
+            aggregate_drift = new_drift and threshold_reached
+            self._ensure_channel_tracking_state(
+                connection,
+                channel_key=channel_key,
+                channel_id=channel_id,
+                channel_username=channel_username,
+                channel_title=channel_title,
+                active_human_count=active_human_count,
+                threshold_reached_at=None,
+                now=now,
+            )
+            connection.execute(
+                """
+                UPDATE channel_tracking_state
+                SET telegram_member_count = ?,
+                    telegram_human_count = ?,
+                    telegram_count_checked_at = ?,
+                    next_count_check_at = ?,
+                    drift_count = drift_count + ?,
+                    last_drift_delta = ?,
+                    last_drift_reported_at = CASE
+                      WHEN ? != 0 AND ? != ? THEN ?
+                      ELSE last_drift_reported_at
+                    END,
+                    digest_period_started_at = CASE
+                      WHEN ? != 0 AND digest_period_started_at IS NULL THEN ?
+                      ELSE digest_period_started_at
+                    END,
+                    updated_at = ?
+                WHERE channel_key = ?
+                """,
+                (
+                    telegram_member_count,
+                    telegram_human_count,
+                    now,
+                    next_check_at,
+                    int(aggregate_drift),
+                    delta,
+                    delta,
+                    delta,
+                    last_delta,
+                    now,
+                    int(aggregate_drift),
+                    now,
+                    now,
+                    channel_key,
+                ),
+            )
+        if not new_drift:
+            return None
+        return ChannelDrift(
+            channel_key=channel_key,
+            channel_title=channel_title,
+            active_human_count=active_human_count,
+            telegram_human_count=telegram_human_count,
+            telegram_raw_count=telegram_member_count,
+        )
+
     def recent_inbound_chats(self, *, since: int, limit: int = 20) -> list[ChatSummary]:
         return self._chat_summaries(
             """
@@ -672,6 +1117,134 @@ class SQLiteStorage:
             )
             for row in rows
         ]
+
+    def _ensure_channel_tracking_state(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        channel_key: str,
+        channel_id: int | None,
+        channel_username: str | None,
+        channel_title: str,
+        active_human_count: int,
+        threshold_reached_at: int | None,
+        now: int,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO channel_tracking_state (
+              channel_key, channel_id, channel_username, channel_title,
+              active_human_count, digest_period_started_at, threshold_reached_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(channel_key) DO UPDATE SET
+              channel_id = COALESCE(excluded.channel_id, channel_tracking_state.channel_id),
+              channel_username = COALESCE(
+                excluded.channel_username,
+                channel_tracking_state.channel_username
+              ),
+              channel_title = excluded.channel_title,
+              active_human_count = excluded.active_human_count,
+              digest_period_started_at = CASE
+                WHEN channel_tracking_state.digest_period_started_at IS NULL
+                THEN excluded.digest_period_started_at
+                ELSE channel_tracking_state.digest_period_started_at
+              END,
+              threshold_reached_at = CASE
+                WHEN channel_tracking_state.threshold_reached_at IS NULL
+                THEN excluded.threshold_reached_at
+                ELSE channel_tracking_state.threshold_reached_at
+              END,
+              updated_at = excluded.updated_at
+            """,
+            (
+                channel_key,
+                channel_id,
+                channel_username,
+                channel_title,
+                active_human_count,
+                threshold_reached_at,
+                threshold_reached_at,
+                now,
+            ),
+        )
+
+    def _channel_human_count(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        channel_key: str,
+    ) -> int:
+        row = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM channel_members
+            WHERE channel_key = ? AND is_bot = 0
+            """,
+            (channel_key,),
+        ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def _get_channel_member_identity(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        channel_key: str,
+        user_id: int,
+    ) -> ChannelMemberIdentity | None:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM channel_members
+            WHERE channel_key = ? AND user_id = ?
+            """,
+            (channel_key, user_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return ChannelMemberIdentity(
+            user_id=int(row["user_id"]),
+            username=_optional_str(row["username"]),
+            first_name=_optional_str(row["first_name"]),
+            last_name=_optional_str(row["last_name"]),
+            is_bot=bool(row["is_bot"]),
+        )
+
+    def _upsert_channel_member(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        channel_key: str,
+        user: ChannelMemberIdentity,
+        joined_at: int,
+        updated_at: int,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO channel_members (
+              channel_key, user_id, username, first_name, last_name, is_bot,
+              joined_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(channel_key, user_id) DO UPDATE SET
+              username = excluded.username,
+              first_name = excluded.first_name,
+              last_name = excluded.last_name,
+              is_bot = excluded.is_bot,
+              updated_at = excluded.updated_at
+            """,
+            (
+                channel_key,
+                user.user_id,
+                user.username,
+                user.first_name,
+                user.last_name,
+                int(user.is_bot),
+                joined_at,
+                updated_at,
+            ),
+        )
 
     def _chat_summaries(self, query: str, params: tuple[Any, ...]) -> list[ChatSummary]:
         with self._connect() as connection:

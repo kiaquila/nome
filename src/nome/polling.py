@@ -13,6 +13,7 @@ DEFAULT_ALLOWED_UPDATES: tuple[str, ...] = (
     "message",
     "business_connection",
     "business_message",
+    "chat_member",
 )
 
 

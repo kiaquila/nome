@@ -60,6 +60,10 @@ class TelegramBotAPI:
             {"business_connection_id": business_connection_id},
         )
 
+    async def get_chat_member_count(self, *, chat_id: str | int) -> int:
+        result = await self._post_raw("getChatMemberCount", {"chat_id": chat_id})
+        return int(result) if result is not None else 0
+
     async def get_updates(
         self,
         *,

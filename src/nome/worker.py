@@ -18,4 +18,12 @@ async def run_reply_worker(
             await handler.process_due_replies()
         except Exception:
             LOGGER.exception("Away-reply worker iteration failed.")
+        try:
+            await handler.process_due_channel_digest()
+        except Exception:
+            LOGGER.exception("Channel digest worker iteration failed.")
+        try:
+            await handler.process_due_channel_count_check()
+        except Exception:
+            LOGGER.exception("Channel count-check worker iteration failed.")
         await asyncio.sleep(poll_interval_seconds)
