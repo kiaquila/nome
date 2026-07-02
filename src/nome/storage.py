@@ -801,6 +801,18 @@ class SQLiteStorage:
                 else:
                     return None
             elif kind == "left":
+                if previous_user is None:
+                    self._ensure_channel_tracking_state(
+                        connection,
+                        channel_key=channel_key,
+                        channel_id=channel_id,
+                        channel_username=channel_username,
+                        channel_title=channel_title,
+                        active_human_count=before_count,
+                        threshold_reached_at=None,
+                        now=now,
+                    )
+                    return None
                 connection.execute(
                     """
                     DELETE FROM channel_members
@@ -808,9 +820,7 @@ class SQLiteStorage:
                     """,
                     (channel_key, user.user_id),
                 )
-                after_count = (
-                    max(before_count - 1, 0) if previous_user is not None else before_count
-                )
+                after_count = max(before_count - 1, 0)
             else:
                 if previous_user is None:
                     self._upsert_channel_member(
@@ -1068,6 +1078,38 @@ class SQLiteStorage:
             telegram_human_count=telegram_human_count,
             telegram_raw_count=telegram_member_count,
         )
+
+    def defer_channel_count_check(
+        self,
+        *,
+        channel_key: str,
+        channel_id: int | None,
+        channel_username: str | None,
+        channel_title: str,
+        next_check_at: int,
+        now: int,
+    ) -> None:
+        with self._connect() as connection:
+            active_human_count = self._channel_human_count(connection, channel_key=channel_key)
+            self._ensure_channel_tracking_state(
+                connection,
+                channel_key=channel_key,
+                channel_id=channel_id,
+                channel_username=channel_username,
+                channel_title=channel_title,
+                active_human_count=active_human_count,
+                threshold_reached_at=None,
+                now=now,
+            )
+            connection.execute(
+                """
+                UPDATE channel_tracking_state
+                SET next_count_check_at = ?,
+                    updated_at = ?
+                WHERE channel_key = ?
+                """,
+                (next_check_at, now, channel_key),
+            )
 
     def recent_inbound_chats(self, *, since: int, limit: int = 20) -> list[ChatSummary]:
         return self._chat_summaries(

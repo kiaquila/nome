@@ -188,6 +188,18 @@ class UpdateHandler:
             raw_count = await self.telegram.get_chat_member_count(chat_id=chat_id)
         except (TelegramAPIError, OSError) as error:
             LOGGER.warning("Could not reconcile channel member count: %s", type(error).__name__)
+            fallback_title = f"@{self.settings.tracked_channel_username or channel_key}"
+            channel_title = self.storage.channel_title(
+                channel_key=channel_key, default=fallback_title
+            )
+            self.storage.defer_channel_count_check(
+                channel_key=channel_key,
+                channel_id=self.settings.tracked_channel_id,
+                channel_username=self.settings.tracked_channel_username,
+                channel_title=channel_title,
+                next_check_at=current_time + self.settings.channel_count_check_interval_seconds,
+                now=current_time,
+            )
             return False
 
         human_count = max(raw_count - self.settings.tracked_channel_count_offset, 0)
