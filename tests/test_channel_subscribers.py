@@ -328,6 +328,59 @@ async def test_replayed_leave_for_absent_member_is_ignored(
 
 
 @pytest.mark.asyncio
+async def test_member_update_before_imported_roster_is_ignored(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=2, threshold=3)
+
+    await handler.handle_update(
+        _chat_member_update(old_status="member", new_status="left", user_id=2, date=50),
+        now=300,
+    )
+
+    assert _member_count(storage.path) == 2
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
+async def test_join_update_before_imported_roster_is_ignored_for_absent_member(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=1, threshold=3)
+
+    await handler.handle_update(
+        _chat_member_update(old_status="left", new_status="member", user_id=2, date=50),
+        now=300,
+    )
+
+    assert _member_count(storage.path) == 1
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
+async def test_delayed_join_after_import_is_applied_after_count_check(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=1, threshold=3)
+    telegram.member_count = 2
+
+    assert await handler.process_due_channel_count_check(now=200) is True
+    assert telegram.sent == []
+
+    await handler.handle_update(
+        _chat_member_update(old_status="left", new_status="member", user_id=2, date=150),
+        now=300,
+    )
+
+    assert _member_count(storage.path) == 2
+    assert len(telegram.sent) == 1
+    assert "подписался" in telegram.sent[0]["text"]
+
+
+@pytest.mark.asyncio
 async def test_bot_join_is_stored_without_owner_notification(
     channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -676,6 +729,7 @@ def _chat_member_update(
     user_id: int,
     username: str | None = None,
     is_bot: bool = False,
+    date: int = 200,
 ) -> dict[str, Any]:
     user = {
         "id": user_id,
@@ -693,7 +747,7 @@ def _chat_member_update(
                 "username": TEST_CHANNEL_USERNAME,
             },
             "from": {"id": 1, "is_bot": False, "first_name": "Owner"},
-            "date": 200,
+            "date": date,
             "old_chat_member": {"status": old_status, "user": user},
             "new_chat_member": {"status": new_status, "user": user},
         },

@@ -102,6 +102,12 @@ class PendingChannelNotification:
 
 
 @dataclass(frozen=True)
+class _ChannelMemberRecord:
+    identity: ChannelMemberIdentity
+    updated_at: int
+
+
+@dataclass(frozen=True)
 class ChannelDrift:
     channel_key: str
     channel_title: str
@@ -211,6 +217,7 @@ class SQLiteStorage:
                   last_drift_delta INTEGER NOT NULL DEFAULT 0,
                   last_drift_reported_at INTEGER,
                   threshold_reached_at INTEGER,
+                  roster_imported_at INTEGER,
                   updated_at INTEGER NOT NULL
                 );
 
@@ -227,6 +234,7 @@ class SQLiteStorage:
                 """
             )
             self._ensure_pending_reply_claim_columns(connection)
+            self._ensure_channel_tracking_columns(connection)
 
     def _ensure_pending_reply_claim_columns(self, connection: sqlite3.Connection) -> None:
         rows = connection.execute("PRAGMA table_info(pending_replies)").fetchall()
@@ -244,6 +252,14 @@ class SQLiteStorage:
             connection.execute("ALTER TABLE pending_replies ADD COLUMN claim_token TEXT")
         if "claim_expires_at" not in columns:
             connection.execute("ALTER TABLE pending_replies ADD COLUMN claim_expires_at INTEGER")
+
+    def _ensure_channel_tracking_columns(self, connection: sqlite3.Connection) -> None:
+        rows = connection.execute("PRAGMA table_info(channel_tracking_state)").fetchall()
+        columns = {str(row["name"]) for row in rows}
+        if "roster_imported_at" not in columns:
+            connection.execute(
+                "ALTER TABLE channel_tracking_state ADD COLUMN roster_imported_at INTEGER"
+            )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -770,6 +786,15 @@ class SQLiteStorage:
                 threshold_reached_at=threshold_reached_at,
                 now=now,
             )
+            connection.execute(
+                """
+                UPDATE channel_tracking_state
+                SET roster_imported_at = ?,
+                    updated_at = ?
+                WHERE channel_key = ?
+                """,
+                (now, now, channel_key),
+            )
         return len(members)
 
     def record_channel_member_change(
@@ -790,16 +815,17 @@ class SQLiteStorage:
         pending_notification_id: int | None = None
         notification_text: str | None = None
         with self._connect() as connection:
-            previous_user = self._get_channel_member_identity(
+            previous_member = self._get_channel_member_record(
                 connection,
                 channel_key=channel_key,
                 user_id=user.user_id,
             )
+            previous_user = previous_member.identity if previous_member is not None else None
             before_count = self._channel_human_count(connection, channel_key=channel_key)
             human_increment = 0 if user.is_bot else 1
             state = connection.execute(
                 """
-                SELECT threshold_reached_at
+                SELECT threshold_reached_at, roster_imported_at
                 FROM channel_tracking_state
                 WHERE channel_key = ?
                 """,
@@ -808,6 +834,17 @@ class SQLiteStorage:
             threshold_was_reached = (
                 state is not None and _optional_int(state["threshold_reached_at"]) is not None
             )
+            roster_imported_at = (
+                _optional_int(state["roster_imported_at"]) if state is not None else None
+            )
+            if previous_member is not None and now < previous_member.updated_at:
+                return None
+            if (
+                previous_member is None
+                and roster_imported_at is not None
+                and now < roster_imported_at
+            ):
+                return None
 
             result_kind = kind
             if kind == "joined":
@@ -1481,13 +1518,13 @@ class SQLiteStorage:
         ).fetchone()
         return int(row["count"]) if row is not None else 0
 
-    def _get_channel_member_identity(
+    def _get_channel_member_record(
         self,
         connection: sqlite3.Connection,
         *,
         channel_key: str,
         user_id: int,
-    ) -> ChannelMemberIdentity | None:
+    ) -> _ChannelMemberRecord | None:
         row = connection.execute(
             """
             SELECT *
@@ -1498,12 +1535,15 @@ class SQLiteStorage:
         ).fetchone()
         if row is None:
             return None
-        return ChannelMemberIdentity(
-            user_id=int(row["user_id"]),
-            username=_optional_str(row["username"]),
-            first_name=_optional_str(row["first_name"]),
-            last_name=_optional_str(row["last_name"]),
-            is_bot=bool(row["is_bot"]),
+        return _ChannelMemberRecord(
+            identity=ChannelMemberIdentity(
+                user_id=int(row["user_id"]),
+                username=_optional_str(row["username"]),
+                first_name=_optional_str(row["first_name"]),
+                last_name=_optional_str(row["last_name"]),
+                is_bot=bool(row["is_bot"]),
+            ),
+            updated_at=int(row["updated_at"]),
         )
 
     def _upsert_channel_member(
