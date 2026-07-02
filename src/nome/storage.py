@@ -3,12 +3,17 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
-from nome.channel_subscribers import ChangeKind, ChannelMemberIdentity
+from nome.channel_subscribers import (
+    ChangeKind,
+    ChannelMemberChange,
+    ChannelMemberIdentity,
+    format_member_change_notification,
+)
 
 
 @dataclass(frozen=True)
@@ -71,6 +76,8 @@ class ChannelMemberChangeResult:
     active_human_count: int
     notify_immediately: bool
     threshold_reached_now: bool
+    pending_notification_id: int | None = None
+    notification_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -776,7 +783,11 @@ class SQLiteStorage:
         user: ChannelMemberIdentity,
         now: int,
         threshold: int,
+        owner_chat_id: int | None = None,
+        notification_change: ChannelMemberChange | None = None,
     ) -> ChannelMemberChangeResult | None:
+        pending_notification_id: int | None = None
+        notification_text: str | None = None
         with self._connect() as connection:
             previous_user = self._get_channel_member_identity(
                 connection,
@@ -926,6 +937,23 @@ class SQLiteStorage:
                     ),
                 )
 
+            if notify_immediately and owner_chat_id is not None and notification_change is not None:
+                notified_change = replace(notification_change, kind=result_kind, occurred_at=now)
+                notification_text = format_member_change_notification(
+                    change=notified_change,
+                    active_human_count=after_count,
+                    threshold=threshold,
+                    threshold_reached_now=threshold_reached_now,
+                    previous_user=previous_user,
+                )
+                pending_notification_id = self._enqueue_channel_notification(
+                    connection,
+                    channel_key=channel_key,
+                    owner_chat_id=owner_chat_id,
+                    text=notification_text,
+                    now=now,
+                )
+
         return ChannelMemberChangeResult(
             kind=result_kind,
             user=user,
@@ -933,6 +961,8 @@ class SQLiteStorage:
             active_human_count=after_count,
             notify_immediately=notify_immediately,
             threshold_reached_now=threshold_reached_now,
+            pending_notification_id=pending_notification_id,
+            notification_text=notification_text,
         )
 
     def enqueue_channel_notification(
@@ -945,21 +975,13 @@ class SQLiteStorage:
         retry_after_seconds: int = 300,
     ) -> None:
         with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO channel_pending_notifications (
-                  channel_key, owner_chat_id, text, created_at, due_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    channel_key,
-                    owner_chat_id,
-                    text,
-                    now,
-                    now + retry_after_seconds,
-                    now,
-                ),
+            self._enqueue_channel_notification(
+                connection,
+                channel_key=channel_key,
+                owner_chat_id=owner_chat_id,
+                text=text,
+                now=now,
+                retry_after_seconds=retry_after_seconds,
             )
 
     def due_channel_notifications(
@@ -1018,6 +1040,37 @@ class SQLiteStorage:
                 """,
                 (now + retry_after_seconds, now, notification_id),
             )
+
+    def _enqueue_channel_notification(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        channel_key: str,
+        owner_chat_id: int,
+        text: str,
+        now: int,
+        retry_after_seconds: int = 300,
+    ) -> int:
+        cursor = connection.execute(
+            """
+            INSERT INTO channel_pending_notifications (
+              channel_key, owner_chat_id, text, created_at, due_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                channel_key,
+                owner_chat_id,
+                text,
+                now,
+                now + retry_after_seconds,
+                now,
+            ),
+        )
+        notification_id = cursor.lastrowid
+        if notification_id is None:
+            raise RuntimeError("Could not create channel notification.")
+        return notification_id
 
     def due_channel_digest(
         self,

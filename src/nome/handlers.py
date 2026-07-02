@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, cast
 
 from nome.channel_subscribers import (
     channel_matches,
     format_channel_digest,
     format_count_drift_notification,
-    format_member_change_notification,
     parse_chat_member_change,
 )
 from nome.config import Settings, normalize_username
@@ -327,6 +326,8 @@ class UpdateHandler:
             user=change.user,
             now=occurred_at,
             threshold=self.settings.tracked_channel_threshold,
+            owner_chat_id=self.settings.owner_chat_id,
+            notification_change=change,
         )
         if result is None or not result.notify_immediately:
             return
@@ -334,24 +335,21 @@ class UpdateHandler:
             LOGGER.info("Channel member change recorded without owner chat configured.")
             return
 
-        notified_change = replace(change, kind=result.kind, occurred_at=occurred_at)
-        text = format_member_change_notification(
-            change=notified_change,
-            active_human_count=result.active_human_count,
-            threshold=self.settings.tracked_channel_threshold,
-            threshold_reached_now=result.threshold_reached_now,
-            previous_user=result.previous_user,
-        )
+        pending_notification_id = result.pending_notification_id
+        text = result.notification_text
+        if pending_notification_id is None or text is None:
+            LOGGER.warning("Channel member notification was not queued transactionally.")
+            return
         try:
             await self.telegram.send_message(chat_id=self.settings.owner_chat_id, text=text)
         except (TelegramAPIError, OSError) as error:
             LOGGER.warning("Could not send channel member notification: %s", type(error).__name__)
-            self.storage.enqueue_channel_notification(
-                channel_key=channel_key,
-                owner_chat_id=self.settings.owner_chat_id,
-                text=text,
+            self.storage.mark_channel_notification_failed(
+                notification_id=pending_notification_id,
                 now=now,
             )
+            return
+        self.storage.mark_channel_notification_sent(notification_id=pending_notification_id)
 
     async def _handle_business_message(self, message: dict[str, Any], *, now: int) -> None:
         connection_id = _str_or_none(message.get("business_connection_id"))
