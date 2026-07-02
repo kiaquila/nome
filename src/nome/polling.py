@@ -13,8 +13,12 @@ DEFAULT_ALLOWED_UPDATES: tuple[str, ...] = (
     "message",
     "business_connection",
     "business_message",
-    "chat_member",
 )
+CHANNEL_TRACKING_ALLOWED_UPDATES: tuple[str, ...] = (*DEFAULT_ALLOWED_UPDATES, "chat_member")
+
+
+def allowed_updates_for_channel_tracking(*, enabled: bool) -> tuple[str, ...]:
+    return CHANNEL_TRACKING_ALLOWED_UPDATES if enabled else DEFAULT_ALLOWED_UPDATES
 
 
 async def run_polling_worker(

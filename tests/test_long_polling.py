@@ -6,7 +6,12 @@ from typing import Any
 import httpx
 import pytest
 
-from nome.polling import DEFAULT_ALLOWED_UPDATES, run_polling_worker
+from nome.polling import (
+    CHANNEL_TRACKING_ALLOWED_UPDATES,
+    DEFAULT_ALLOWED_UPDATES,
+    allowed_updates_for_channel_tracking,
+    run_polling_worker,
+)
 from nome.telegram_api import TelegramAPIError, TelegramBotAPI
 
 
@@ -192,7 +197,14 @@ async def test_default_allowed_updates_cover_business_intake() -> None:
     assert "business_connection" in DEFAULT_ALLOWED_UPDATES
     assert "business_message" in DEFAULT_ALLOWED_UPDATES
     assert "message" in DEFAULT_ALLOWED_UPDATES
-    assert "chat_member" in DEFAULT_ALLOWED_UPDATES
+    assert "chat_member" not in DEFAULT_ALLOWED_UPDATES
+
+
+@pytest.mark.asyncio
+async def test_channel_tracking_allowed_updates_include_chat_members_only_when_enabled() -> None:
+    assert "chat_member" in CHANNEL_TRACKING_ALLOWED_UPDATES
+    assert allowed_updates_for_channel_tracking(enabled=False) == DEFAULT_ALLOWED_UPDATES
+    assert allowed_updates_for_channel_tracking(enabled=True) == CHANNEL_TRACKING_ALLOWED_UPDATES
 
 
 @pytest.mark.asyncio
