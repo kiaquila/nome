@@ -32,14 +32,19 @@ def main() -> None:
 
     snapshot_username = normalize_username(_str_or_none(payload.get("channel_username")))
     channel_username = normalize_username(args.channel_username) or snapshot_username or None
-    explicit_channel_key = normalize_username(args.channel_key)
-    channel_key = explicit_channel_key or settings.tracked_channel_key or channel_username
-    if channel_key is None:
-        raise SystemExit("Provide --channel-key or configure NOME_TRACKED_CHANNEL_USERNAME.")
-
     channel_id = (
         args.channel_id if args.channel_id is not None else _optional_int(payload.get("channel_id"))
     )
+    explicit_channel_key = normalize_username(args.channel_key)
+    channel_id_key = str(channel_id) if channel_id is not None else None
+    channel_key = (
+        explicit_channel_key or settings.tracked_channel_key or channel_id_key or channel_username
+    )
+    if channel_key is None:
+        raise SystemExit(
+            "Provide --channel-key, --channel-id, or configure NOME_TRACKED_CHANNEL_USERNAME."
+        )
+
     channel_title = args.channel_title or (
         f"@{channel_username}" if channel_username else "Telegram channel"
     )

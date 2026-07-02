@@ -627,6 +627,98 @@ def test_roster_import_prefers_configured_channel_key(
     assert rows == [("-100123", 1)]
 
 
+def test_roster_import_uses_cli_channel_id_as_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "nome.sqlite3"
+    snapshot_path = tmp_path / "roster.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "captured_at": 100,
+                "members": [
+                    {
+                        "user_id": 1,
+                        "username": "reader",
+                        "first_name": "Reader",
+                        "last_name": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(database_path))
+    monkeypatch.delenv("NOME_TRACKED_CHANNEL_ID", raising=False)
+    monkeypatch.delenv("NOME_TRACKED_CHANNEL_USERNAME", raising=False)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "nome-channel-roster-import",
+            "--input",
+            str(snapshot_path),
+            "--channel-id",
+            "-100123",
+        ],
+    )
+
+    import_roster_main()
+
+    connection = sqlite3.connect(database_path)
+    try:
+        rows = connection.execute("SELECT channel_key, user_id FROM channel_members").fetchall()
+    finally:
+        connection.close()
+    assert rows == [("-100123", 1)]
+
+
+def test_roster_import_prefers_snapshot_channel_id_over_username_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "nome.sqlite3"
+    snapshot_path = tmp_path / "roster.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "captured_at": 100,
+                "channel_username": "snapshotname",
+                "channel_id": 123,
+                "members": [
+                    {
+                        "user_id": 1,
+                        "username": "reader",
+                        "first_name": "Reader",
+                        "last_name": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(database_path))
+    monkeypatch.delenv("NOME_TRACKED_CHANNEL_ID", raising=False)
+    monkeypatch.delenv("NOME_TRACKED_CHANNEL_USERNAME", raising=False)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "nome-channel-roster-import",
+            "--input",
+            str(snapshot_path),
+        ],
+    )
+
+    import_roster_main()
+
+    connection = sqlite3.connect(database_path)
+    try:
+        rows = connection.execute("SELECT channel_key, user_id FROM channel_members").fetchall()
+    finally:
+        connection.close()
+    assert rows == [("123", 1)]
+
+
 def test_roster_import_normalizes_explicit_channel_key(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
