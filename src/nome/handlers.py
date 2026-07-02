@@ -309,6 +309,13 @@ class UpdateHandler:
             tracked_channel_id=self.settings.tracked_channel_id,
         ):
             return
+        if (
+            change.user.is_bot
+            and change.user.username
+            and normalize_username(change.user.username)
+            == normalize_username(self.settings.business_bot_username)
+        ):
+            return
 
         occurred_at = change.occurred_at or now
         result = self.storage.record_channel_member_change(

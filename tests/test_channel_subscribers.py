@@ -268,6 +268,29 @@ async def test_bot_join_is_stored_without_owner_notification(
 
 
 @pytest.mark.asyncio
+async def test_configured_nome_bot_join_is_ignored(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=1, threshold=3)
+
+    await handler.handle_update(
+        _chat_member_update(
+            old_status="left",
+            new_status="administrator",
+            user_id=9000,
+            username="nome_ai_bot",
+            is_bot=True,
+        ),
+        now=200,
+    )
+
+    assert _member_count(storage.path) == 1
+    assert _human_count(storage.path) == 1
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
 async def test_count_check_reports_new_drift_once(
     channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -453,6 +476,70 @@ def test_roster_import_normalizes_explicit_channel_key(
     finally:
         connection.close()
     assert rows == [("examplechannel", 1)]
+
+
+def test_roster_import_skips_configured_nome_bot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "nome.sqlite3"
+    snapshot_path = tmp_path / "roster.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "channel_username": TEST_CHANNEL_USERNAME,
+                "members": [
+                    {
+                        "user_id": 1,
+                        "username": "reader",
+                        "first_name": "Reader",
+                        "last_name": None,
+                    },
+                    {
+                        "user_id": 2,
+                        "username": "nome_ai_bot",
+                        "first_name": "Nome",
+                        "last_name": None,
+                        "is_bot": True,
+                    },
+                    {
+                        "user_id": 3,
+                        "username": "helperbot",
+                        "first_name": "Helper",
+                        "last_name": None,
+                        "is_bot": True,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("NOME_BUSINESS_BOT_USERNAME", "nome_ai_bot")
+    monkeypatch.setenv("NOME_TRACKED_CHANNEL_USERNAME", TEST_CHANNEL_USERNAME)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "nome-channel-roster-import",
+            "--input",
+            str(snapshot_path),
+        ],
+    )
+
+    import_roster_main()
+
+    connection = sqlite3.connect(database_path)
+    try:
+        rows = connection.execute(
+            "SELECT user_id, username, is_bot FROM channel_members ORDER BY user_id"
+        ).fetchall()
+        state = connection.execute(
+            "SELECT active_human_count FROM channel_tracking_state"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert rows == [(1, "reader", 0), (3, "helperbot", 1)]
+    assert state == (1,)
 
 
 def _seed_roster(storage: SQLiteStorage, *, count: int, threshold: int) -> None:

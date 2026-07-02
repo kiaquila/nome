@@ -35,17 +35,24 @@ def main() -> None:
     channel_title = args.channel_title or (
         f"@{channel_username}" if channel_username else "Telegram channel"
     )
-    members = [
-        ChannelMemberIdentity(
-            user_id=int(member["user_id"]),
-            username=normalize_username(_str_or_none(member.get("username"))) or None,
-            first_name=_str_or_none(member.get("first_name")),
-            last_name=_str_or_none(member.get("last_name")),
-            is_bot=bool(member.get("is_bot")),
+    excluded_bot_username = normalize_username(settings.business_bot_username)
+    members: list[ChannelMemberIdentity] = []
+    for member in _list(payload.get("members")):
+        if not isinstance(member, dict) or member.get("user_id") is None:
+            continue
+        username = normalize_username(_str_or_none(member.get("username"))) or None
+        is_bot = bool(member.get("is_bot"))
+        if is_bot and username == excluded_bot_username:
+            continue
+        members.append(
+            ChannelMemberIdentity(
+                user_id=int(member["user_id"]),
+                username=username,
+                first_name=_str_or_none(member.get("first_name")),
+                last_name=_str_or_none(member.get("last_name")),
+                is_bot=is_bot,
+            )
         )
-        for member in _list(payload.get("members"))
-        if isinstance(member, dict) and member.get("user_id") is not None
-    ]
 
     storage = SQLiteStorage(settings.database_path)
     storage.initialize()
