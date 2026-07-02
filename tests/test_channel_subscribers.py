@@ -142,6 +142,45 @@ async def test_changes_after_threshold_are_aggregated_into_daily_digest(
 
 
 @pytest.mark.asyncio
+async def test_digest_preserves_counters_added_while_sending(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=3, threshold=3)
+    await handler.handle_update(
+        _chat_member_update(old_status="left", new_status="member", user_id=4),
+        now=102,
+    )
+    original_send_message = telegram.send_message
+
+    async def send_message_with_concurrent_join(
+        *,
+        chat_id: int,
+        text: str,
+        business_connection_id: str | None = None,
+    ) -> int:
+        await handler.handle_update(
+            _chat_member_update(old_status="left", new_status="member", user_id=5),
+            now=111,
+        )
+        return await original_send_message(
+            chat_id=chat_id,
+            text=text,
+            business_connection_id=business_connection_id,
+        )
+
+    monkeypatch.setattr(telegram, "send_message", send_message_with_concurrent_join)
+
+    assert await handler.process_due_channel_digest(now=111) == 1
+    assert "+ подписались: 1" in telegram.sent[0]["text"]
+
+    monkeypatch.setattr(telegram, "send_message", original_send_message)
+    assert await handler.process_due_channel_digest(now=121) == 1
+    assert "+ подписались: 1" in telegram.sent[1]["text"]
+
+
+@pytest.mark.asyncio
 async def test_leave_removes_member_from_current_roster(
     channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:

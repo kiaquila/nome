@@ -165,7 +165,7 @@ class UpdateHandler:
         except (TelegramAPIError, OSError) as error:
             LOGGER.warning("Could not send channel digest: %s", type(error).__name__)
             return 0
-        self.storage.mark_channel_digest_sent(channel_key=channel_key, now=current_time)
+        self.storage.mark_channel_digest_sent(digest=digest, now=current_time)
         return 1
 
     async def process_due_channel_count_check(self, *, now: int | None = None) -> bool:

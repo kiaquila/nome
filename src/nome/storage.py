@@ -941,21 +941,48 @@ class SQLiteStorage:
             period_started_at=period_started_at,
         )
 
-    def mark_channel_digest_sent(self, *, channel_key: str, now: int) -> None:
+    def mark_channel_digest_sent(self, *, digest: ChannelDigest, now: int) -> None:
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT joined_count, left_count, profile_update_count, drift_count
+                FROM channel_tracking_state
+                WHERE channel_key = ?
+                """,
+                (digest.channel_key,),
+            ).fetchone()
+            if row is None:
+                return
+            joined_count = max(int(row["joined_count"]) - digest.joined_count, 0)
+            left_count = max(int(row["left_count"]) - digest.left_count, 0)
+            profile_update_count = max(
+                int(row["profile_update_count"]) - digest.profile_update_count,
+                0,
+            )
+            drift_count = max(int(row["drift_count"]) - digest.drift_count, 0)
             connection.execute(
                 """
                 UPDATE channel_tracking_state
-                SET joined_count = 0,
-                    left_count = 0,
-                    profile_update_count = 0,
-                    drift_count = 0,
+                SET joined_count = ?,
+                    left_count = ?,
+                    profile_update_count = ?,
+                    drift_count = ?,
                     digest_period_started_at = ?,
                     last_digest_at = ?,
                     updated_at = ?
                 WHERE channel_key = ?
                 """,
-                (now, now, now, channel_key),
+                (
+                    joined_count,
+                    left_count,
+                    profile_update_count,
+                    drift_count,
+                    now,
+                    now,
+                    now,
+                    digest.channel_key,
+                ),
             )
 
     def channel_count_check_due(
