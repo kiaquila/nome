@@ -181,9 +181,11 @@ class Settings:
 
     @property
     def tracked_channel_chat_id(self) -> str | int | None:
+        if self.tracked_channel_id is not None:
+            return self.tracked_channel_id
         if self.tracked_channel_username:
             return f"@{self.tracked_channel_username}"
-        return self.tracked_channel_id
+        return None
 
     def require_telethon(self) -> None:
         missing = [

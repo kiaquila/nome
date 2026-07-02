@@ -20,9 +20,15 @@ TEST_CHANNEL_TITLE = "Example Channel"
 
 
 class FakeTelegram:
-    def __init__(self, *, member_count: int | Exception = 0) -> None:
+    def __init__(
+        self,
+        *,
+        member_count: int | Exception = 0,
+        expected_count_chat_id: str | int = f"@{TEST_CHANNEL_USERNAME}",
+    ) -> None:
         self.sent: list[dict[str, Any]] = []
         self.member_count = member_count
+        self.expected_count_chat_id = expected_count_chat_id
 
     async def send_message(
         self,
@@ -44,7 +50,7 @@ class FakeTelegram:
         raise KeyError(business_connection_id)
 
     async def get_chat_member_count(self, *, chat_id: str | int) -> int:
-        assert chat_id == f"@{TEST_CHANNEL_USERNAME}"
+        assert chat_id == self.expected_count_chat_id
         if isinstance(self.member_count, Exception):
             raise self.member_count
         return self.member_count
@@ -435,6 +441,31 @@ async def test_count_check_reports_new_drift_once(
 
     assert await handler.process_due_channel_count_check(now=211) is True
     assert len(telegram.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_count_check_prefers_channel_id_when_configured(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "nome.sqlite3")
+    storage.initialize()
+    telegram = FakeTelegram(member_count=2, expected_count_chat_id=TEST_CHANNEL_ID)
+    settings = Settings(
+        bot_token="test-token",
+        database_path=storage.path,
+        owner_chat_id=900,
+        tracked_channel_username=TEST_CHANNEL_USERNAME,
+        tracked_channel_id=TEST_CHANNEL_ID,
+        tracked_channel_threshold=3,
+        channel_count_check_interval_seconds=10,
+        tracked_channel_count_offset=1,
+    )
+    handler = UpdateHandler(
+        settings=settings,
+        storage=storage,
+        telegram=telegram,  # type: ignore[arg-type]
+    )
+    _seed_roster(storage, count=1, threshold=3)
+
+    assert await handler.process_due_channel_count_check(now=200) is True
 
 
 @pytest.mark.asyncio
