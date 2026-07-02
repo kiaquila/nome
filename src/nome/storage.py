@@ -92,6 +92,7 @@ class ChannelDrift:
     active_human_count: int
     telegram_human_count: int
     telegram_raw_count: int
+    delta: int
 
 
 class SQLiteStorage:
@@ -1043,12 +1044,8 @@ class SQLiteStorage:
                 (channel_key,),
             ).fetchone()
             last_delta = int(row["last_drift_delta"]) if row is not None else 0
-            threshold_reached = (
-                row is not None and _optional_int(row["threshold_reached_at"]) is not None
-            )
             delta = telegram_human_count - active_human_count
             new_drift = delta != 0 and delta != last_delta
-            aggregate_drift = new_drift and threshold_reached
             self._ensure_channel_tracking_state(
                 connection,
                 channel_key=channel_key,
@@ -1066,15 +1063,9 @@ class SQLiteStorage:
                     telegram_human_count = ?,
                     telegram_count_checked_at = ?,
                     next_count_check_at = ?,
-                    drift_count = drift_count + ?,
-                    last_drift_delta = ?,
-                    last_drift_reported_at = CASE
-                      WHEN ? != 0 AND ? != ? THEN ?
-                      ELSE last_drift_reported_at
-                    END,
-                    digest_period_started_at = CASE
-                      WHEN ? != 0 AND digest_period_started_at IS NULL THEN ?
-                      ELSE digest_period_started_at
+                    last_drift_delta = CASE
+                      WHEN ? = 0 THEN 0
+                      ELSE last_drift_delta
                     END,
                     updated_at = ?
                 WHERE channel_key = ?
@@ -1084,14 +1075,7 @@ class SQLiteStorage:
                     telegram_human_count,
                     now,
                     next_check_at,
-                    int(aggregate_drift),
                     delta,
-                    delta,
-                    delta,
-                    last_delta,
-                    now,
-                    int(aggregate_drift),
-                    now,
                     now,
                     channel_key,
                 ),
@@ -1104,7 +1088,58 @@ class SQLiteStorage:
             active_human_count=active_human_count,
             telegram_human_count=telegram_human_count,
             telegram_raw_count=telegram_member_count,
+            delta=delta,
         )
+
+    def mark_channel_drift_reported(
+        self,
+        *,
+        channel_key: str,
+        drift_delta: int,
+        now: int,
+    ) -> None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT last_drift_delta, threshold_reached_at
+                FROM channel_tracking_state
+                WHERE channel_key = ?
+                """,
+                (channel_key,),
+            ).fetchone()
+            if row is None:
+                return
+
+            last_delta = int(row["last_drift_delta"])
+            threshold_reached = _optional_int(row["threshold_reached_at"]) is not None
+            aggregate_drift = drift_delta != 0 and drift_delta != last_delta and threshold_reached
+            connection.execute(
+                """
+                UPDATE channel_tracking_state
+                SET drift_count = drift_count + ?,
+                    last_drift_delta = ?,
+                    last_drift_reported_at = CASE
+                      WHEN ? != 0 THEN ?
+                      ELSE last_drift_reported_at
+                    END,
+                    digest_period_started_at = CASE
+                      WHEN ? != 0 AND digest_period_started_at IS NULL THEN ?
+                      ELSE digest_period_started_at
+                    END,
+                    updated_at = ?
+                WHERE channel_key = ?
+                """,
+                (
+                    int(aggregate_drift),
+                    drift_delta,
+                    drift_delta,
+                    now,
+                    drift_delta,
+                    now,
+                    now,
+                    channel_key,
+                ),
+            )
 
     def defer_channel_count_check(
         self,

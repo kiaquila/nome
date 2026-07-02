@@ -255,11 +255,11 @@ async def test_get_chat_member_count_posts_chat_id() -> None:
     transport = httpx.MockTransport(handle)
     async with httpx.AsyncClient(transport=transport) as client:
         telegram = TelegramBotAPI(bot_token="test-token", client=client)
-        count = await telegram.get_chat_member_count(chat_id="@vibecodesh")
+        count = await telegram.get_chat_member_count(chat_id="@examplechannel")
 
     assert count == 89
     assert captured["path"].endswith("/getChatMemberCount")
-    assert b'"chat_id":"@vibecodesh"' in captured["payload"]
+    assert b'"chat_id":"@examplechannel"' in captured["payload"]
 
 
 async def _wait_until(predicate: Any, *, timeout: float = 2.0) -> None:

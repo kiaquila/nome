@@ -51,8 +51,9 @@ performs lightweight count reconciliation and daily digest delivery.
 
 - `uv run python scripts/preflight.py`
 - Manual setup already performed locally:
-  - Telethon snapshot captured to ignored `data/vibecode-schrodinger-roster.json`.
-  - `@nome_ai_bot` promoted to administrator in `@vibecodesh`.
+  - Telethon snapshot captured to ignored local `data/`.
+  - The configured Nome bot was promoted to administrator in the configured
+    channel.
 
 ## Risks
 

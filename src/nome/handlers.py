@@ -215,7 +215,14 @@ class UpdateHandler:
             next_check_at=current_time + self.settings.channel_count_check_interval_seconds,
             now=current_time,
         )
-        if drift is None or self.settings.owner_chat_id is None:
+        if drift is None:
+            return True
+        if self.settings.owner_chat_id is None:
+            self.storage.mark_channel_drift_reported(
+                channel_key=drift.channel_key,
+                drift_delta=drift.delta,
+                now=current_time,
+            )
             return True
 
         text = format_count_drift_notification(
@@ -228,6 +235,12 @@ class UpdateHandler:
             await self.telegram.send_message(chat_id=self.settings.owner_chat_id, text=text)
         except (TelegramAPIError, OSError) as error:
             LOGGER.warning("Could not send channel drift notification: %s", type(error).__name__)
+            return True
+        self.storage.mark_channel_drift_reported(
+            channel_key=drift.channel_key,
+            drift_delta=drift.delta,
+            now=current_time,
+        )
         return True
 
     def _handle_business_connection(self, payload: dict[str, Any], *, now: int) -> None:

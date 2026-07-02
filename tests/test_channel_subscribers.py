@@ -14,6 +14,10 @@ from nome.handlers import UpdateHandler
 from nome.storage import SQLiteStorage
 from nome.telegram_api import TelegramAPIError
 
+TEST_CHANNEL_ID = -1001234567890
+TEST_CHANNEL_USERNAME = "examplechannel"
+TEST_CHANNEL_TITLE = "Example Channel"
+
 
 class FakeTelegram:
     def __init__(self, *, member_count: int | Exception = 0) -> None:
@@ -40,7 +44,7 @@ class FakeTelegram:
         raise KeyError(business_connection_id)
 
     async def get_chat_member_count(self, *, chat_id: str | int) -> int:
-        assert chat_id == "@vibecodesh"
+        assert chat_id == f"@{TEST_CHANNEL_USERNAME}"
         if isinstance(self.member_count, Exception):
             raise self.member_count
         return self.member_count
@@ -55,7 +59,7 @@ def channel_handler(tmp_path: Path) -> tuple[UpdateHandler, SQLiteStorage, FakeT
         bot_token="test-token",
         database_path=tmp_path / "nome.sqlite3",
         owner_chat_id=900,
-        tracked_channel_username="vibecodesh",
+        tracked_channel_username=TEST_CHANNEL_USERNAME,
         tracked_channel_threshold=3,
         channel_digest_interval_seconds=10,
         channel_count_check_interval_seconds=10,
@@ -81,7 +85,7 @@ def test_parse_chat_member_update_detects_join() -> None:
 
     assert change is not None
     assert change.kind == "joined"
-    assert change.channel_username == "vibecodesh"
+    assert change.channel_username == TEST_CHANNEL_USERNAME
     assert change.user.username == "newreader"
 
 
@@ -231,6 +235,38 @@ async def test_count_check_reports_new_drift_once(
 
 
 @pytest.mark.asyncio
+async def test_drift_notification_send_failure_retries_next_interval(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=2, threshold=3)
+    telegram.member_count = 5
+    original_send_message = telegram.send_message
+
+    async def failed_send_message(
+        *,
+        chat_id: int,
+        text: str,
+        business_connection_id: str | None = None,
+    ) -> int:
+        raise OSError("temporary network failure")
+
+    monkeypatch.setattr(telegram, "send_message", failed_send_message)
+    assert await handler.process_due_channel_count_check(now=200) is True
+    assert telegram.sent == []
+
+    monkeypatch.setattr(telegram, "send_message", original_send_message)
+    assert await handler.process_due_channel_count_check(now=201) is False
+    assert await handler.process_due_channel_count_check(now=211) is True
+    assert len(telegram.sent) == 1
+    assert "расхождение roster" in telegram.sent[0]["text"]
+
+    assert await handler.process_due_channel_count_check(now=222) is True
+    assert len(telegram.sent) == 1
+
+
+@pytest.mark.asyncio
 async def test_failed_count_check_defers_next_attempt(
     channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -292,10 +328,10 @@ def test_roster_import_prefers_configured_channel_key(
 
 def _seed_roster(storage: SQLiteStorage, *, count: int, threshold: int) -> None:
     storage.import_channel_roster(
-        channel_key="vibecodesh",
-        channel_id=-1003750588137,
-        channel_username="vibecodesh",
-        channel_title="Vibecode",
+        channel_key=TEST_CHANNEL_USERNAME,
+        channel_id=TEST_CHANNEL_ID,
+        channel_username=TEST_CHANNEL_USERNAME,
+        channel_title=TEST_CHANNEL_TITLE,
         members=[
             ChannelMemberIdentity(
                 user_id=user_id,
@@ -337,10 +373,10 @@ def _chat_member_update(
         "update_id": user_id,
         "chat_member": {
             "chat": {
-                "id": -1003750588137,
+                "id": TEST_CHANNEL_ID,
                 "type": "channel",
-                "title": "Vibecode",
-                "username": "vibecodesh",
+                "title": TEST_CHANNEL_TITLE,
+                "username": TEST_CHANNEL_USERNAME,
             },
             "from": {"id": 1, "is_bot": False, "first_name": "Owner"},
             "date": 200,
