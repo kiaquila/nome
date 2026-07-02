@@ -26,9 +26,9 @@ without storing historical subscriber lists or message content.
   is below the configured threshold.
 - After the threshold is reached, store only aggregate pending counts and send a
   daily digest.
-- Periodically reconcile the local human roster count against Telegram
-  `getChatMemberCount` and report drift without trying to invent missing
-  identities.
+- Periodically reconcile the local roster row count against Telegram
+  `getChatMemberCount` after the configured count offset and report drift
+  without trying to invent missing identities.
 
 ## Non-Goals
 

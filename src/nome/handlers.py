@@ -227,6 +227,7 @@ class UpdateHandler:
 
         text = format_count_drift_notification(
             channel_title=drift.channel_title,
+            local_roster_count=drift.local_roster_count,
             active_human_count=drift.active_human_count,
             telegram_human_count=drift.telegram_human_count,
             telegram_raw_count=drift.telegram_raw_count,

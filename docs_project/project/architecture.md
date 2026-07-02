@@ -74,7 +74,7 @@ owner-only notifications for joins, leaves, and profile metadata updates. Once
 the threshold has been reached, it switches to daily aggregate digests.
 
 The scheduled worker periodically calls `getChatMemberCount` as a reconciliation
-check. The count is adjusted by `NOME_TRACKED_CHANNEL_COUNT_OFFSET` so the Nome
-admin bot itself does not appear as a human subscriber. If Telegram's adjusted
-count disagrees with the local roster, Nome reports drift without guessing which
-identity changed.
+check. The count is adjusted by `NOME_TRACKED_CHANNEL_COUNT_OFFSET` for members
+Nome intentionally leaves out of the roster, such as the Nome admin bot itself.
+If Telegram's adjusted count disagrees with the local roster row count, Nome
+reports drift without guessing which identity changed.

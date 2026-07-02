@@ -171,6 +171,7 @@ def format_channel_digest(
 def format_count_drift_notification(
     *,
     channel_title: str,
+    local_roster_count: int,
     active_human_count: int,
     telegram_human_count: int,
     telegram_raw_count: int,
@@ -178,6 +179,7 @@ def format_count_drift_notification(
     return "\n".join(
         [
             f"{channel_title}: расхождение roster и счетчика",
+            f"Локально в roster: {local_roster_count}",
             f"Локально людей: {active_human_count}",
             f"Telegram после поправки: {telegram_human_count}",
             f"Telegram raw: {telegram_raw_count}",

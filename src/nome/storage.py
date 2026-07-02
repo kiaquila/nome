@@ -89,6 +89,7 @@ class ChannelDigest:
 class ChannelDrift:
     channel_key: str
     channel_title: str
+    local_roster_count: int
     active_human_count: int
     telegram_human_count: int
     telegram_raw_count: int
@@ -703,8 +704,8 @@ class SQLiteStorage:
         now: int,
         threshold: int,
     ) -> int:
-        human_members = [member for member in members if not member.is_bot]
-        threshold_reached_at = now if len(human_members) >= threshold else None
+        active_human_count = sum(1 for member in members if not member.is_bot)
+        threshold_reached_at = now if active_human_count >= threshold else None
         with self._connect() as connection:
             connection.execute(
                 "DELETE FROM channel_members WHERE channel_key = ?",
@@ -729,7 +730,7 @@ class SQLiteStorage:
                         now,
                         now,
                     )
-                    for member in human_members
+                    for member in members
                 ],
             )
             self._ensure_channel_tracking_state(
@@ -738,11 +739,11 @@ class SQLiteStorage:
                 channel_id=channel_id,
                 channel_username=channel_username,
                 channel_title=channel_title,
-                active_human_count=len(human_members),
+                active_human_count=active_human_count,
                 threshold_reached_at=threshold_reached_at,
                 now=now,
             )
-        return len(human_members)
+        return len(members)
 
     def record_channel_member_change(
         self,
@@ -756,9 +757,6 @@ class SQLiteStorage:
         now: int,
         threshold: int,
     ) -> ChannelMemberChangeResult | None:
-        if user.is_bot:
-            return None
-
         with self._connect() as connection:
             previous_user = self._get_channel_member_identity(
                 connection,
@@ -766,6 +764,7 @@ class SQLiteStorage:
                 user_id=user.user_id,
             )
             before_count = self._channel_human_count(connection, channel_key=channel_key)
+            human_increment = 0 if user.is_bot else 1
             state = connection.execute(
                 """
                 SELECT threshold_reached_at
@@ -788,7 +787,7 @@ class SQLiteStorage:
                         joined_at=now,
                         updated_at=now,
                     )
-                    after_count = before_count + 1
+                    after_count = before_count + human_increment
                 elif not user.same_public_profile(previous_user):
                     self._upsert_channel_member(
                         connection,
@@ -821,7 +820,7 @@ class SQLiteStorage:
                     """,
                     (channel_key, user.user_id),
                 )
-                after_count = max(before_count - 1, 0)
+                after_count = max(before_count - human_increment, 0)
             else:
                 if previous_user is None:
                     self._upsert_channel_member(
@@ -831,7 +830,7 @@ class SQLiteStorage:
                         joined_at=now,
                         updated_at=now,
                     )
-                    after_count = before_count + 1
+                    after_count = before_count + human_increment
                     self._ensure_channel_tracking_state(
                         connection,
                         channel_key=channel_key,
@@ -853,6 +852,19 @@ class SQLiteStorage:
                     updated_at=now,
                 )
                 after_count = before_count
+
+            if user.is_bot:
+                self._ensure_channel_tracking_state(
+                    connection,
+                    channel_key=channel_key,
+                    channel_id=channel_id,
+                    channel_username=channel_username,
+                    channel_title=channel_title,
+                    active_human_count=after_count,
+                    threshold_reached_at=None,
+                    now=now,
+                )
+                return None
 
             threshold_reached_now = not threshold_was_reached and after_count >= threshold
             notify_immediately = not threshold_was_reached
@@ -1035,6 +1047,7 @@ class SQLiteStorage:
     ) -> ChannelDrift | None:
         with self._connect() as connection:
             active_human_count = self._channel_human_count(connection, channel_key=channel_key)
+            local_roster_count = self._channel_member_count(connection, channel_key=channel_key)
             row = connection.execute(
                 """
                 SELECT last_drift_delta, threshold_reached_at
@@ -1044,7 +1057,7 @@ class SQLiteStorage:
                 (channel_key,),
             ).fetchone()
             last_delta = int(row["last_drift_delta"]) if row is not None else 0
-            delta = telegram_human_count - active_human_count
+            delta = telegram_human_count - local_roster_count
             new_drift = delta != 0 and delta != last_delta
             self._ensure_channel_tracking_state(
                 connection,
@@ -1085,6 +1098,7 @@ class SQLiteStorage:
         return ChannelDrift(
             channel_key=channel_key,
             channel_title=channel_title,
+            local_roster_count=local_roster_count,
             active_human_count=active_human_count,
             telegram_human_count=telegram_human_count,
             telegram_raw_count=telegram_member_count,
@@ -1285,6 +1299,22 @@ class SQLiteStorage:
             SELECT COUNT(*) AS count
             FROM channel_members
             WHERE channel_key = ? AND is_bot = 0
+            """,
+            (channel_key,),
+        ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def _channel_member_count(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        channel_key: str,
+    ) -> int:
+        row = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM channel_members
+            WHERE channel_key = ?
             """,
             (channel_key,),
         ).fetchone()

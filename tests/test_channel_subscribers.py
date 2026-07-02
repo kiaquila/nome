@@ -218,6 +218,23 @@ async def test_replayed_leave_for_absent_member_is_ignored(
 
 
 @pytest.mark.asyncio
+async def test_bot_join_is_stored_without_owner_notification(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=1, threshold=3)
+
+    await handler.handle_update(
+        _chat_member_update(old_status="left", new_status="administrator", user_id=9, is_bot=True),
+        now=200,
+    )
+
+    assert _member_count(storage.path) == 2
+    assert _human_count(storage.path) == 1
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
 async def test_count_check_reports_new_drift_once(
     channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -232,6 +249,40 @@ async def test_count_check_reports_new_drift_once(
 
     assert await handler.process_due_channel_count_check(now=211) is True
     assert len(telegram.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_count_check_includes_imported_non_nome_bots_in_roster(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    handler, storage, telegram = channel_handler
+    storage.import_channel_roster(
+        channel_key=TEST_CHANNEL_USERNAME,
+        channel_id=TEST_CHANNEL_ID,
+        channel_username=TEST_CHANNEL_USERNAME,
+        channel_title=TEST_CHANNEL_TITLE,
+        members=[
+            ChannelMemberIdentity(
+                user_id=1,
+                username="user1",
+                first_name="User 1",
+                last_name=None,
+            ),
+            ChannelMemberIdentity(
+                user_id=2,
+                username="helperbot",
+                first_name="Helper",
+                last_name=None,
+                is_bot=True,
+            ),
+        ],
+        now=100,
+        threshold=3,
+    )
+    telegram.member_count = 3
+
+    assert await handler.process_due_channel_count_check(now=200) is True
+    assert telegram.sent == []
 
 
 @pytest.mark.asyncio
@@ -356,16 +407,27 @@ def _member_count(path: Path) -> int:
     return int(row[0])
 
 
+def _human_count(path: Path) -> int:
+    connection = sqlite3.connect(path)
+    try:
+        row = connection.execute("SELECT COUNT(*) FROM channel_members WHERE is_bot = 0").fetchone()
+    finally:
+        connection.close()
+    assert row is not None
+    return int(row[0])
+
+
 def _chat_member_update(
     *,
     old_status: str,
     new_status: str,
     user_id: int,
     username: str | None = None,
+    is_bot: bool = False,
 ) -> dict[str, Any]:
     user = {
         "id": user_id,
-        "is_bot": False,
+        "is_bot": is_bot,
         "first_name": f"User {user_id}",
         "username": username or f"user{user_id}",
     }
