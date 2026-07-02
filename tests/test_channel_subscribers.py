@@ -262,6 +262,38 @@ async def test_changes_after_threshold_are_aggregated_into_daily_digest(
 
 
 @pytest.mark.asyncio
+async def test_failed_channel_digest_defers_retry_and_preserves_counters(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=3, threshold=3)
+    await handler.handle_update(
+        _chat_member_update(old_status="left", new_status="member", user_id=4),
+        now=102,
+    )
+    original_send_message = telegram.send_message
+
+    async def failed_send_message(
+        *,
+        chat_id: int,
+        text: str,
+        business_connection_id: str | None = None,
+    ) -> int:
+        raise OSError("temporary network failure")
+
+    monkeypatch.setattr(telegram, "send_message", failed_send_message)
+    assert await handler.process_due_channel_digest(now=111) == 0
+    assert telegram.sent == []
+
+    monkeypatch.setattr(telegram, "send_message", original_send_message)
+    assert await handler.process_due_channel_digest(now=112) == 0
+    assert await handler.process_due_channel_digest(now=121) == 1
+    assert len(telegram.sent) == 1
+    assert "+ подписались: 1" in telegram.sent[0]["text"]
+
+
+@pytest.mark.asyncio
 async def test_digest_preserves_counters_added_while_sending(
     channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
     monkeypatch: pytest.MonkeyPatch,

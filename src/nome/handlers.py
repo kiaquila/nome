@@ -163,6 +163,11 @@ class UpdateHandler:
             await self.telegram.send_message(chat_id=self.settings.owner_chat_id, text=text)
         except (TelegramAPIError, OSError) as error:
             LOGGER.warning("Could not send channel digest: %s", type(error).__name__)
+            self.storage.defer_channel_digest(
+                channel_key=digest.channel_key,
+                next_digest_at=current_time + self.settings.channel_digest_interval_seconds,
+                now=current_time,
+            )
             return 0
         self.storage.mark_channel_digest_sent(digest=digest, now=current_time)
         return 1

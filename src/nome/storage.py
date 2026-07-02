@@ -213,6 +213,7 @@ class SQLiteStorage:
                   drift_count INTEGER NOT NULL DEFAULT 0,
                   digest_period_started_at INTEGER,
                   last_digest_at INTEGER,
+                  next_digest_at INTEGER,
                   next_count_check_at INTEGER,
                   last_drift_delta INTEGER NOT NULL DEFAULT 0,
                   last_drift_reported_at INTEGER,
@@ -259,6 +260,10 @@ class SQLiteStorage:
         if "roster_imported_at" not in columns:
             connection.execute(
                 "ALTER TABLE channel_tracking_state ADD COLUMN roster_imported_at INTEGER"
+            )
+        if "next_digest_at" not in columns:
+            connection.execute(
+                "ALTER TABLE channel_tracking_state ADD COLUMN next_digest_at INTEGER"
             )
 
     @contextmanager
@@ -1136,6 +1141,9 @@ class SQLiteStorage:
             ).fetchone()
         if row is None:
             return None
+        next_digest_at = _optional_int(row["next_digest_at"])
+        if next_digest_at is not None and now < next_digest_at:
+            return None
         last_digest_at = _optional_int(row["last_digest_at"])
         period_started_at = _optional_int(row["digest_period_started_at"])
         due_after = last_digest_at if last_digest_at is not None else period_started_at
@@ -1183,6 +1191,7 @@ class SQLiteStorage:
                     drift_count = ?,
                     digest_period_started_at = ?,
                     last_digest_at = ?,
+                    next_digest_at = NULL,
                     updated_at = ?
                 WHERE channel_key = ?
                 """,
@@ -1196,6 +1205,18 @@ class SQLiteStorage:
                     now,
                     digest.channel_key,
                 ),
+            )
+
+    def defer_channel_digest(self, *, channel_key: str, next_digest_at: int, now: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE channel_tracking_state
+                SET next_digest_at = ?,
+                    updated_at = ?
+                WHERE channel_key = ?
+                """,
+                (next_digest_at, now, channel_key),
             )
 
     def channel_count_check_due(
