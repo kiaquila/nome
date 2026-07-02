@@ -746,9 +746,11 @@ class SQLiteStorage:
         members: list[ChannelMemberIdentity],
         now: int,
         threshold: int,
+        snapshot_at: int | None = None,
     ) -> int:
+        roster_timestamp = now if snapshot_at is None else snapshot_at
         active_human_count = sum(1 for member in members if not member.is_bot)
-        threshold_reached_at = now if active_human_count >= threshold else None
+        threshold_reached_at = roster_timestamp if active_human_count >= threshold else None
         with self._connect() as connection:
             connection.execute(
                 "DELETE FROM channel_members WHERE channel_key = ?",
@@ -770,8 +772,8 @@ class SQLiteStorage:
                         member.first_name,
                         member.last_name,
                         int(member.is_bot),
-                        now,
-                        now,
+                        roster_timestamp,
+                        roster_timestamp,
                     )
                     for member in members
                 ],
@@ -793,7 +795,7 @@ class SQLiteStorage:
                     updated_at = ?
                 WHERE channel_key = ?
                 """,
-                (now, now, channel_key),
+                (roster_timestamp, now, channel_key),
             )
         return len(members)
 

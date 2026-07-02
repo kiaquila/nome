@@ -527,6 +527,7 @@ def test_roster_import_prefers_configured_channel_key(
     snapshot_path.write_text(
         json.dumps(
             {
+                "captured_at": 100,
                 "channel_username": "snapshotname",
                 "channel_id": 123,
                 "members": [
@@ -572,6 +573,7 @@ def test_roster_import_normalizes_explicit_channel_key(
     snapshot_path.write_text(
         json.dumps(
             {
+                "captured_at": 100,
                 "members": [
                     {
                         "user_id": 1,
@@ -617,6 +619,7 @@ def test_roster_import_skips_configured_nome_bot(
     snapshot_path.write_text(
         json.dumps(
             {
+                "captured_at": 100,
                 "channel_username": TEST_CHANNEL_USERNAME,
                 "members": [
                     {
@@ -670,6 +673,87 @@ def test_roster_import_skips_configured_nome_bot(
         connection.close()
     assert rows == [(1, "reader", 0), (3, "helperbot", 1)]
     assert state == (1,)
+
+
+def test_roster_import_uses_snapshot_captured_at_as_cutoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "nome.sqlite3"
+    snapshot_path = tmp_path / "roster.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "captured_at": 100,
+                "channel_username": TEST_CHANNEL_USERNAME,
+                "members": [
+                    {
+                        "user_id": 1,
+                        "username": "reader",
+                        "first_name": "Reader",
+                        "last_name": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("NOME_TRACKED_CHANNEL_USERNAME", TEST_CHANNEL_USERNAME)
+    monkeypatch.setattr("nome.channel_roster_import.utc_timestamp", lambda: 200)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "nome-channel-roster-import",
+            "--input",
+            str(snapshot_path),
+        ],
+    )
+
+    import_roster_main()
+
+    connection = sqlite3.connect(database_path)
+    try:
+        member = connection.execute(
+            "SELECT joined_at, updated_at FROM channel_members WHERE user_id = 1"
+        ).fetchone()
+        state = connection.execute(
+            "SELECT roster_imported_at, updated_at FROM channel_tracking_state"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert member == (100, 100)
+    assert state == (100, 200)
+
+
+def test_roster_import_requires_snapshot_captured_at(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "nome.sqlite3"
+    snapshot_path = tmp_path / "roster.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "channel_username": TEST_CHANNEL_USERNAME,
+                "members": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("NOME_TRACKED_CHANNEL_USERNAME", TEST_CHANNEL_USERNAME)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "nome-channel-roster-import",
+            "--input",
+            str(snapshot_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="captured_at"):
+        import_roster_main()
 
 
 def _seed_roster(storage: SQLiteStorage, *, count: int, threshold: int) -> None:

@@ -52,5 +52,6 @@ without storing historical subscriber lists or message content.
 - Count reconciliation records the latest Telegram count and reports drift to
   the owner without naming unknown users.
 - The one-time import command loads the local Telethon snapshot into SQLite
-  without printing subscriber names.
+  without printing subscriber names and uses the snapshot capture time as the
+  stale-update cutoff.
 - `uv run python scripts/preflight.py` passes locally.
