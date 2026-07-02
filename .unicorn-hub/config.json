@@ -28,7 +28,9 @@
   "requiredChecks": ["baseline-checks", "guard", "AI Review"],
   "reviewAgents": ["codex", "claude", "gemini"],
   "trustedReviewLogins": [],
-  "trustedReviewLoginsByAgent": {},
+  "trustedReviewLoginsByAgent": {
+    "codex": ["chatgpt-codex-connector"]
+  },
   "defaultImplementationAgent": "claude",
   "defaultReviewAgent": "codex",
   "defaultBaseBranch": "main",
