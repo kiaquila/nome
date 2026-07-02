@@ -5,6 +5,12 @@ import logging
 from dataclasses import dataclass
 from typing import Any, cast
 
+from nome.channel_subscribers import (
+    channel_matches,
+    format_channel_digest,
+    format_count_drift_notification,
+    parse_chat_member_change,
+)
 from nome.config import Settings, normalize_username
 from nome.storage import BusinessConnection, SQLiteStorage
 from nome.telegram_api import TelegramAPIError, TelegramBotAPI
@@ -40,6 +46,9 @@ class UpdateHandler:
 
         if business_message := update.get("business_message"):
             await self._handle_business_message(business_message, now=current_time)
+
+        if chat_member := update.get("chat_member"):
+            await self._handle_chat_member_update(chat_member, now=current_time)
 
         if message := update.get("message"):
             await self._handle_owner_command(message, now=current_time)
@@ -124,6 +133,156 @@ class UpdateHandler:
             sent_count += 1
         return sent_count
 
+    async def process_due_channel_digest(self, *, now: int | None = None) -> int:
+        if not self.settings.channel_tracking_enabled or self.settings.owner_chat_id is None:
+            return 0
+        channel_key = self.settings.tracked_channel_key
+        if channel_key is None:
+            return 0
+
+        current_time = utc_timestamp() if now is None else now
+        digest = self.storage.due_channel_digest(
+            channel_key=channel_key,
+            now=current_time,
+            interval_seconds=self.settings.channel_digest_interval_seconds,
+        )
+        if digest is None:
+            return 0
+
+        text = format_channel_digest(
+            channel_title=digest.channel_title,
+            active_human_count=digest.active_human_count,
+            joined_count=digest.joined_count,
+            left_count=digest.left_count,
+            profile_update_count=digest.profile_update_count,
+            drift_count=digest.drift_count,
+            period_started_at=digest.period_started_at,
+            now=current_time,
+        )
+        try:
+            await self.telegram.send_message(chat_id=self.settings.owner_chat_id, text=text)
+        except (TelegramAPIError, OSError) as error:
+            LOGGER.warning("Could not send channel digest: %s", type(error).__name__)
+            self.storage.defer_channel_digest(
+                channel_key=digest.channel_key,
+                next_digest_at=current_time + self.settings.channel_digest_interval_seconds,
+                now=current_time,
+            )
+            return 0
+        self.storage.mark_channel_digest_sent(digest=digest, now=current_time)
+        return 1
+
+    async def process_due_channel_notifications(self, *, now: int | None = None) -> int:
+        current_time = utc_timestamp() if now is None else now
+        active_channel_key = self.settings.tracked_channel_key
+        active_owner_chat_id = self.settings.owner_chat_id
+        sent_count = 0
+        for notification in self.storage.due_channel_notifications(now=current_time):
+            if (
+                not self.settings.channel_tracking_enabled
+                or active_channel_key is None
+                or active_owner_chat_id is None
+                or notification.channel_key != active_channel_key
+                or notification.owner_chat_id != active_owner_chat_id
+            ):
+                LOGGER.info("Dropping stale pending channel notification.")
+                self.storage.delete_channel_notification(notification_id=notification.id)
+                continue
+            try:
+                await self.telegram.send_message(
+                    chat_id=active_owner_chat_id,
+                    text=notification.text,
+                )
+            except (TelegramAPIError, OSError) as error:
+                LOGGER.warning(
+                    "Could not send pending channel notification: %s",
+                    type(error).__name__,
+                )
+                self.storage.mark_channel_notification_failed(
+                    notification_id=notification.id,
+                    now=current_time,
+                )
+                continue
+            self.storage.mark_channel_notification_sent(notification_id=notification.id)
+            sent_count += 1
+        return sent_count
+
+    async def process_due_channel_count_check(self, *, now: int | None = None) -> bool:
+        if not self.settings.channel_tracking_enabled:
+            return False
+        channel_key = self.settings.tracked_channel_key
+        chat_id = self.settings.tracked_channel_chat_id
+        if channel_key is None or chat_id is None:
+            return False
+
+        current_time = utc_timestamp() if now is None else now
+        if not self.storage.channel_count_check_due(
+            channel_key=channel_key,
+            now=current_time,
+            interval_seconds=self.settings.channel_count_check_interval_seconds,
+        ):
+            return False
+
+        try:
+            raw_count = await self.telegram.get_chat_member_count(chat_id=chat_id)
+        except (TelegramAPIError, OSError) as error:
+            LOGGER.warning("Could not reconcile channel member count: %s", type(error).__name__)
+            fallback_title = f"@{self.settings.tracked_channel_username or channel_key}"
+            channel_title = self.storage.channel_title(
+                channel_key=channel_key, default=fallback_title
+            )
+            self.storage.defer_channel_count_check(
+                channel_key=channel_key,
+                channel_id=self.settings.tracked_channel_id,
+                channel_username=self.settings.tracked_channel_username,
+                channel_title=channel_title,
+                next_check_at=current_time + self.settings.channel_count_check_interval_seconds,
+                now=current_time,
+            )
+            return False
+
+        human_count = max(raw_count - self.settings.tracked_channel_count_offset, 0)
+        fallback_title = f"@{self.settings.tracked_channel_username or channel_key}"
+        channel_title = self.storage.channel_title(channel_key=channel_key, default=fallback_title)
+        drift = self.storage.record_channel_count_check(
+            channel_key=channel_key,
+            channel_id=self.settings.tracked_channel_id,
+            channel_username=self.settings.tracked_channel_username,
+            channel_title=channel_title,
+            telegram_member_count=raw_count,
+            telegram_human_count=human_count,
+            next_check_at=current_time + self.settings.channel_count_check_interval_seconds,
+            now=current_time,
+        )
+        if drift is None:
+            return True
+        if self.settings.owner_chat_id is None:
+            self.storage.mark_channel_drift_reported(
+                channel_key=drift.channel_key,
+                drift_delta=drift.delta,
+                now=current_time,
+            )
+            return True
+
+        text = format_count_drift_notification(
+            channel_title=drift.channel_title,
+            local_roster_count=drift.local_roster_count,
+            active_human_count=drift.active_human_count,
+            telegram_human_count=drift.telegram_human_count,
+            telegram_raw_count=drift.telegram_raw_count,
+        )
+        try:
+            await self.telegram.send_message(chat_id=self.settings.owner_chat_id, text=text)
+        except (TelegramAPIError, OSError) as error:
+            LOGGER.warning("Could not send channel drift notification: %s", type(error).__name__)
+            return True
+        self.storage.mark_channel_drift_reported(
+            channel_key=drift.channel_key,
+            drift_delta=drift.delta,
+            now=current_time,
+        )
+        return True
+
     def _handle_business_connection(self, payload: dict[str, Any], *, now: int) -> None:
         user = _dict(payload.get("user"))
         username = normalize_username(_str_or_none(user.get("username")))
@@ -149,6 +308,66 @@ class UpdateHandler:
         )
         if not payload.get("is_enabled", True) or not can_reply:
             self.storage.cancel_pending_for_connection(business_connection_id=str(payload["id"]))
+
+    async def _handle_chat_member_update(self, payload: dict[str, Any], *, now: int) -> None:
+        if not self.settings.channel_tracking_enabled:
+            return
+        channel_key = self.settings.tracked_channel_key
+        if channel_key is None:
+            return
+
+        change = parse_chat_member_change(payload)
+        if change is None:
+            return
+        if not channel_matches(
+            change,
+            tracked_username=self.settings.tracked_channel_username,
+            tracked_channel_id=self.settings.tracked_channel_id,
+        ):
+            return
+        if (
+            change.user.is_bot
+            and change.user.username
+            and normalize_username(change.user.username)
+            == normalize_username(self.settings.business_bot_username)
+        ):
+            return
+
+        occurred_at = change.occurred_at or now
+        result = self.storage.record_channel_member_change(
+            channel_key=channel_key,
+            channel_id=change.channel_id,
+            channel_username=change.channel_username,
+            channel_title=change.channel_title,
+            kind=change.kind,
+            user=change.user,
+            now=occurred_at,
+            threshold=self.settings.tracked_channel_threshold,
+            owner_chat_id=self.settings.owner_chat_id,
+            notification_change=change,
+            notification_now=now,
+        )
+        if result is None or not result.notify_immediately:
+            return
+        if self.settings.owner_chat_id is None:
+            LOGGER.info("Channel member change recorded without owner chat configured.")
+            return
+
+        pending_notification_id = result.pending_notification_id
+        text = result.notification_text
+        if pending_notification_id is None or text is None:
+            LOGGER.warning("Channel member notification was not queued transactionally.")
+            return
+        try:
+            await self.telegram.send_message(chat_id=self.settings.owner_chat_id, text=text)
+        except (TelegramAPIError, OSError) as error:
+            LOGGER.warning("Could not send channel member notification: %s", type(error).__name__)
+            self.storage.mark_channel_notification_failed(
+                notification_id=pending_notification_id,
+                now=now,
+            )
+            return
+        self.storage.mark_channel_notification_sent(notification_id=pending_notification_id)
 
     async def _handle_business_message(self, message: dict[str, Any], *, now: int) -> None:
         connection_id = _str_or_none(message.get("business_connection_id"))

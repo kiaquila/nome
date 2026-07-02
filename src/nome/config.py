@@ -13,6 +13,10 @@ DEFAULT_AUTO_REPLY_TEXT = (
 )
 DEFAULT_LONG_POLL_TIMEOUT_SECONDS = 50
 DEFAULT_POLLING_ERROR_BACKOFF_SECONDS = 5.0
+DEFAULT_TRACKED_CHANNEL_THRESHOLD = 150
+DEFAULT_CHANNEL_DIGEST_INTERVAL_SECONDS = 24 * 60 * 60
+DEFAULT_CHANNEL_COUNT_CHECK_INTERVAL_SECONDS = 30 * 60
+DEFAULT_TRACKED_CHANNEL_COUNT_OFFSET = 1
 
 
 class ConfigurationError(RuntimeError):
@@ -49,6 +53,13 @@ class Settings:
     worker_poll_interval_seconds: float = 5.0
     long_poll_timeout_seconds: int = DEFAULT_LONG_POLL_TIMEOUT_SECONDS
     polling_error_backoff_seconds: float = DEFAULT_POLLING_ERROR_BACKOFF_SECONDS
+    owner_chat_id: int | None = None
+    tracked_channel_username: str | None = None
+    tracked_channel_id: int | None = None
+    tracked_channel_threshold: int = DEFAULT_TRACKED_CHANNEL_THRESHOLD
+    channel_digest_interval_seconds: int = DEFAULT_CHANNEL_DIGEST_INTERVAL_SECONDS
+    channel_count_check_interval_seconds: int = DEFAULT_CHANNEL_COUNT_CHECK_INTERVAL_SECONDS
+    tracked_channel_count_offset: int = DEFAULT_TRACKED_CHANNEL_COUNT_OFFSET
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
     telethon_session: str | None = None
@@ -76,6 +87,41 @@ class Settings:
         if polling_error_backoff_seconds < 0:
             raise ConfigurationError("NOME_POLLING_ERROR_BACKOFF_SECONDS must be non-negative.")
 
+        tracked_channel_threshold = int(
+            os.getenv("NOME_TRACKED_CHANNEL_THRESHOLD", str(DEFAULT_TRACKED_CHANNEL_THRESHOLD))
+        )
+        if tracked_channel_threshold <= 0:
+            raise ConfigurationError("NOME_TRACKED_CHANNEL_THRESHOLD must be positive.")
+
+        channel_digest_interval_seconds = int(
+            os.getenv(
+                "NOME_CHANNEL_DIGEST_INTERVAL_SECONDS",
+                str(DEFAULT_CHANNEL_DIGEST_INTERVAL_SECONDS),
+            )
+        )
+        if channel_digest_interval_seconds < 0:
+            raise ConfigurationError("NOME_CHANNEL_DIGEST_INTERVAL_SECONDS must be non-negative.")
+
+        channel_count_check_interval_seconds = int(
+            os.getenv(
+                "NOME_CHANNEL_COUNT_CHECK_INTERVAL_SECONDS",
+                str(DEFAULT_CHANNEL_COUNT_CHECK_INTERVAL_SECONDS),
+            )
+        )
+        if channel_count_check_interval_seconds < 0:
+            raise ConfigurationError(
+                "NOME_CHANNEL_COUNT_CHECK_INTERVAL_SECONDS must be non-negative."
+            )
+
+        tracked_channel_count_offset = int(
+            os.getenv(
+                "NOME_TRACKED_CHANNEL_COUNT_OFFSET",
+                str(DEFAULT_TRACKED_CHANNEL_COUNT_OFFSET),
+            )
+        )
+        if tracked_channel_count_offset < 0:
+            raise ConfigurationError("NOME_TRACKED_CHANNEL_COUNT_OFFSET must be non-negative.")
+
         return cls(
             bot_token=bot_token,
             database_path=Path(os.getenv("NOME_DATABASE_PATH", "data/nome.sqlite3")),
@@ -86,6 +132,14 @@ class Settings:
             worker_poll_interval_seconds=float(os.getenv("NOME_WORKER_POLL_SECONDS", "5")),
             long_poll_timeout_seconds=long_poll_timeout_seconds,
             polling_error_backoff_seconds=polling_error_backoff_seconds,
+            owner_chat_id=_optional_int("NOME_OWNER_CHAT_ID"),
+            tracked_channel_username=normalize_username(os.getenv("NOME_TRACKED_CHANNEL_USERNAME"))
+            or None,
+            tracked_channel_id=_optional_int("NOME_TRACKED_CHANNEL_ID"),
+            tracked_channel_threshold=tracked_channel_threshold,
+            channel_digest_interval_seconds=channel_digest_interval_seconds,
+            channel_count_check_interval_seconds=channel_count_check_interval_seconds,
+            tracked_channel_count_offset=tracked_channel_count_offset,
             telegram_api_id=_optional_int("TELEGRAM_API_ID"),
             telegram_api_hash=os.getenv("TELEGRAM_API_HASH"),
             telethon_session=os.getenv("NOME_TELETHON_SESSION"),
@@ -112,6 +166,26 @@ class Settings:
     @property
     def normalized_setup_chat_usernames(self) -> frozenset[str]:
         return frozenset(normalize_username(username) for username in self.setup_chat_usernames)
+
+    @property
+    def channel_tracking_enabled(self) -> bool:
+        return self.tracked_channel_username is not None or self.tracked_channel_id is not None
+
+    @property
+    def tracked_channel_key(self) -> str | None:
+        if self.tracked_channel_username:
+            return self.tracked_channel_username
+        if self.tracked_channel_id is not None:
+            return str(self.tracked_channel_id)
+        return None
+
+    @property
+    def tracked_channel_chat_id(self) -> str | int | None:
+        if self.tracked_channel_id is not None:
+            return self.tracked_channel_id
+        if self.tracked_channel_username:
+            return f"@{self.tracked_channel_username}"
+        return None
 
     def require_telethon(self) -> None:
         missing = [

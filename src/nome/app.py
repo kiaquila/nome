@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from nome.config import Settings
 from nome.handlers import UpdateHandler
-from nome.polling import run_polling_worker
+from nome.polling import allowed_updates_for_channel_tracking, run_polling_worker
 from nome.storage import SQLiteStorage
 from nome.telegram_api import TelegramBotAPI
 from nome.worker import run_reply_worker
@@ -42,6 +42,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 telegram,
                 long_poll_timeout_seconds=runtime_settings.long_poll_timeout_seconds,
                 error_backoff_seconds=runtime_settings.polling_error_backoff_seconds,
+                allowed_updates=allowed_updates_for_channel_tracking(
+                    enabled=runtime_settings.channel_tracking_enabled
+                ),
             )
         )
         app.state.nome_handler = handler

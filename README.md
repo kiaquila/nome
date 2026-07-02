@@ -13,8 +13,9 @@ The repository keeps feature memory in `specs/` and durable product context in
 - `docs_project/` contains durable product and architecture context.
 - `specs/` contains per-PR feature memory: `spec.md`, `plan.md`, and `tasks.md`.
 - `src/nome/` contains the long-polling Telegram client, reply scheduler,
-  storage, and Telethon setup command. A small FastAPI app exposes only a
-  loopback `/healthz` endpoint for deployment verification.
+  channel subscriber tracker, storage, and Telethon setup commands. A small
+  FastAPI app exposes only a loopback `/healthz` endpoint for deployment
+  verification.
 - `tests/` covers privacy-sensitive bot behavior.
 - `scripts/` contains local Python repository checks plus compatibility guard
   helpers used by existing GitHub workflows.
@@ -51,6 +52,8 @@ uv run nome
 
 Nome does not require any inbound HTTP exposure. On startup it deletes any
 previously configured Telegram webhook so `getUpdates` can take over cleanly.
+The polling request explicitly includes `chat_member` updates when channel
+subscriber tracking is configured.
 
 ## Production Deployment
 
@@ -74,11 +77,34 @@ uv run python -m nome.business_setup
 The setup command defaults to `@nome_ai_bot` and the selected users `@chapppp`
 and `@AlexOxitocin`. It grants only `read_messages` and `reply` rights.
 
+## Channel Subscriber Tracking
+
+Nome can track one owner-configured Telegram channel after the bot is added as a
+channel administrator. Configure:
+
+```env
+NOME_OWNER_CHAT_ID=
+NOME_TRACKED_CHANNEL_USERNAME=
+NOME_TRACKED_CHANNEL_THRESHOLD=150
+```
+
+Import the current roster from an owner-authorized Telethon snapshot:
+
+```bash
+uv run nome-channel-roster-import --input data/channel-roster.json
+```
+
+The Bot API cannot export all channel subscribers. Nome stores the imported
+current roster, updates it from future `chat_member` events, and uses
+`getChatMemberCount` only to detect count drift.
+
 ## Safety Defaults
 
 - Owner commands are accepted only from the hard-coded username `ks_aquila`.
 - Business connections for any other owner username are ignored.
 - Message text is not persisted.
+- Channel subscriber history is not persisted; Nome keeps the current roster
+  plus aggregate daily counters.
 - Nome answers a private Business chat at most once per twelve hours.
 
 See `docs_project/project/product-brief.md` and

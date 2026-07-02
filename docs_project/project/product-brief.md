@@ -18,6 +18,8 @@ are implemented.
   selected private chat has waited for three minutes.
 - Report recent inbound private chats, away replies, and inferred unread chats
   through an owner-only Telegram command.
+- Track subscriber joins and leaves for one owner-configured Telegram channel
+  after an owner-authorized roster import.
 - Capture short notes, tasks, and reminders from Telegram messages.
 - Confirm parsed intent before scheduling or sending anything externally.
 - Store assistant memory in a replaceable persistence layer.

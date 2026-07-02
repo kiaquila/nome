@@ -594,6 +594,19 @@ def test_from_env_defaults_reply_timing(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert settings.owner_active_window_seconds == 43_200
 
 
+def test_from_env_requires_explicit_owner_chat_id_for_owner_notices(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(tmp_path / "nome.sqlite3"))
+    monkeypatch.delenv("NOME_OWNER_CHAT_ID", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.owner_chat_id is None
+
+
 def test_from_env_rejects_negative_long_poll_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("NOME_LONG_POLL_TIMEOUT_SECONDS", "-1")

@@ -26,6 +26,7 @@ dev = [
 [project.scripts]
 nome = "nome.app:main"
 nome-business-setup = "nome.business_setup:main"
+nome-channel-roster-import = "nome.channel_roster_import:main"
 
 [tool.ruff]
 line-length = 100

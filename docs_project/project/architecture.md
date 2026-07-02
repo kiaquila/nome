@@ -25,12 +25,13 @@ secret manager, never in committed files.
 ## Likely Runtime
 
 Nome v1 uses Python 3.12, the Telegram Bot API over `httpx` with long polling,
-Telethon for one-time Business chat automation setup, and SQLite for private
-single-host persistence. A small FastAPI app exposes only a loopback `/healthz`
-endpoint that the deploy verifier polls; the bot itself does not need any
-inbound HTTP exposure. The runtime is intended for one AWS host/process in v1;
-horizontal scaling would require both the pending-reply scheduler and the
-single-consumer `getUpdates` loop to be reworked.
+Telethon for one-time Business chat automation and channel roster setup, and
+SQLite for private single-host persistence. A small FastAPI app exposes only a
+loopback `/healthz` endpoint that the deploy verifier polls; the bot itself does
+not need any inbound HTTP exposure. The runtime is intended for one AWS
+host/process in v1; horizontal scaling would require the pending-reply
+scheduler, channel digest scheduler, and single-consumer `getUpdates` loop to be
+reworked.
 
 ## Business Chat Automation
 
@@ -57,3 +58,25 @@ later update behind it.
 The Telethon setup command grants only `read_messages` and `reply` rights for
 the selected private chats. It does not request profile, story, gift, username,
 or message deletion rights.
+
+## Channel Subscriber Tracking
+
+Subscriber tracking is opt-in through `NOME_TRACKED_CHANNEL_USERNAME` or
+`NOME_TRACKED_CHANNEL_ID`. The bot must be a channel administrator and polling
+must request `chat_member` updates. Nome cannot enumerate channel subscribers
+through the Bot API; a one-time owner-authorized Telethon snapshot seeds the
+current roster, and later changes come from Telegram membership events.
+
+SQLite stores only the current known roster (`user_id`, username, first name,
+last name, bot flag, timestamps) plus aggregate digest counters. It does not keep
+a permanent join/leave event log. Failed below-threshold owner notifications are
+kept only in a transient retry queue and deleted after delivery. Before the
+configured threshold, Nome sends owner-only notifications for joins, leaves, and
+profile metadata updates. Once the threshold has been reached, it switches to
+daily aggregate digests.
+
+The scheduled worker periodically calls `getChatMemberCount` as a reconciliation
+check. The count is adjusted by `NOME_TRACKED_CHANNEL_COUNT_OFFSET` for members
+Nome intentionally leaves out of the roster, such as the Nome admin bot itself.
+If Telegram's adjusted count disagrees with the local roster row count, Nome
+reports drift without guessing which identity changed.
