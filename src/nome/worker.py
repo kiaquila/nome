@@ -23,6 +23,10 @@ async def run_reply_worker(
         except Exception:
             LOGGER.exception("Channel digest worker iteration failed.")
         try:
+            await handler.process_due_channel_notifications()
+        except Exception:
+            LOGGER.exception("Channel notification worker iteration failed.")
+        try:
             await handler.process_due_channel_count_check()
         except Exception:
             LOGGER.exception("Channel count-check worker iteration failed.")

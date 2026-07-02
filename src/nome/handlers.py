@@ -168,6 +168,29 @@ class UpdateHandler:
         self.storage.mark_channel_digest_sent(digest=digest, now=current_time)
         return 1
 
+    async def process_due_channel_notifications(self, *, now: int | None = None) -> int:
+        current_time = utc_timestamp() if now is None else now
+        sent_count = 0
+        for notification in self.storage.due_channel_notifications(now=current_time):
+            try:
+                await self.telegram.send_message(
+                    chat_id=notification.owner_chat_id,
+                    text=notification.text,
+                )
+            except (TelegramAPIError, OSError) as error:
+                LOGGER.warning(
+                    "Could not send pending channel notification: %s",
+                    type(error).__name__,
+                )
+                self.storage.mark_channel_notification_failed(
+                    notification_id=notification.id,
+                    now=current_time,
+                )
+                continue
+            self.storage.mark_channel_notification_sent(notification_id=notification.id)
+            sent_count += 1
+        return sent_count
+
     async def process_due_channel_count_check(self, *, now: int | None = None) -> bool:
         if not self.settings.channel_tracking_enabled:
             return False
@@ -316,6 +339,12 @@ class UpdateHandler:
             await self.telegram.send_message(chat_id=self.settings.owner_chat_id, text=text)
         except (TelegramAPIError, OSError) as error:
             LOGGER.warning("Could not send channel member notification: %s", type(error).__name__)
+            self.storage.enqueue_channel_notification(
+                channel_key=channel_key,
+                owner_chat_id=self.settings.owner_chat_id,
+                text=text,
+                now=now,
+            )
 
     async def _handle_business_message(self, message: dict[str, Any], *, now: int) -> None:
         connection_id = _str_or_none(message.get("business_connection_id"))

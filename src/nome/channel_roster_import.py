@@ -24,7 +24,8 @@ def main() -> None:
     payload = json.loads(args.input.read_text(encoding="utf-8"))
     snapshot_username = normalize_username(_str_or_none(payload.get("channel_username")))
     channel_username = normalize_username(args.channel_username) or snapshot_username or None
-    channel_key = args.channel_key or settings.tracked_channel_key or channel_username
+    explicit_channel_key = normalize_username(args.channel_key)
+    channel_key = explicit_channel_key or settings.tracked_channel_key or channel_username
     if channel_key is None:
         raise SystemExit("Provide --channel-key or configure NOME_TRACKED_CHANNEL_USERNAME.")
 

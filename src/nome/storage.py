@@ -86,6 +86,15 @@ class ChannelDigest:
 
 
 @dataclass(frozen=True)
+class PendingChannelNotification:
+    id: int
+    channel_key: str
+    owner_chat_id: int
+    text: str
+    due_at: int
+
+
+@dataclass(frozen=True)
 class ChannelDrift:
     channel_key: str
     channel_title: str
@@ -196,6 +205,17 @@ class SQLiteStorage:
                   last_drift_reported_at INTEGER,
                   threshold_reached_at INTEGER,
                   updated_at INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS channel_pending_notifications (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  channel_key TEXT NOT NULL,
+                  owner_chat_id INTEGER NOT NULL,
+                  text TEXT NOT NULL,
+                  created_at INTEGER NOT NULL,
+                  due_at INTEGER NOT NULL,
+                  updated_at INTEGER NOT NULL,
+                  failure_count INTEGER NOT NULL DEFAULT 0
                 );
                 """
             )
@@ -914,6 +934,90 @@ class SQLiteStorage:
             notify_immediately=notify_immediately,
             threshold_reached_now=threshold_reached_now,
         )
+
+    def enqueue_channel_notification(
+        self,
+        *,
+        channel_key: str,
+        owner_chat_id: int,
+        text: str,
+        now: int,
+        retry_after_seconds: int = 300,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO channel_pending_notifications (
+                  channel_key, owner_chat_id, text, created_at, due_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    channel_key,
+                    owner_chat_id,
+                    text,
+                    now,
+                    now + retry_after_seconds,
+                    now,
+                ),
+            )
+
+    def due_channel_notifications(
+        self,
+        *,
+        now: int,
+        limit: int = 20,
+    ) -> list[PendingChannelNotification]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM channel_pending_notifications
+                WHERE due_at <= ?
+                ORDER BY due_at ASC, id ASC
+                LIMIT ?
+                """,
+                (now, limit),
+            ).fetchall()
+        return [
+            PendingChannelNotification(
+                id=int(row["id"]),
+                channel_key=str(row["channel_key"]),
+                owner_chat_id=int(row["owner_chat_id"]),
+                text=str(row["text"]),
+                due_at=int(row["due_at"]),
+            )
+            for row in rows
+        ]
+
+    def mark_channel_notification_sent(self, *, notification_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                DELETE FROM channel_pending_notifications
+                WHERE id = ?
+                """,
+                (notification_id,),
+            )
+
+    def mark_channel_notification_failed(
+        self,
+        *,
+        notification_id: int,
+        now: int,
+        retry_after_seconds: int = 300,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE channel_pending_notifications
+                SET due_at = ?,
+                    updated_at = ?,
+                    failure_count = failure_count + 1
+                WHERE id = ?
+                """,
+                (now + retry_after_seconds, now, notification_id),
+            )
 
     def due_channel_digest(
         self,

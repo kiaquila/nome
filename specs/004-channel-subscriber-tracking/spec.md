@@ -43,6 +43,8 @@ without storing historical subscriber lists or message content.
 - `chat_member` updates for unrelated chats are ignored.
 - Join and leave updates for the configured channel update the current roster.
 - Human users trigger notifications; bot users do not.
+- Failed immediate owner notifications are retried from a transient queue and
+  removed after delivery.
 - A join that reaches the threshold sends a final immediate threshold message;
   later changes are aggregated for the daily digest.
 - Daily digest sending resets only aggregate counters and does not require

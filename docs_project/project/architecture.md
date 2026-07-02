@@ -69,9 +69,11 @@ current roster, and later changes come from Telegram membership events.
 
 SQLite stores only the current known roster (`user_id`, username, first name,
 last name, bot flag, timestamps) plus aggregate digest counters. It does not keep
-a permanent join/leave event log. Before the configured threshold, Nome sends
-owner-only notifications for joins, leaves, and profile metadata updates. Once
-the threshold has been reached, it switches to daily aggregate digests.
+a permanent join/leave event log. Failed below-threshold owner notifications are
+kept only in a transient retry queue and deleted after delivery. Before the
+configured threshold, Nome sends owner-only notifications for joins, leaves, and
+profile metadata updates. Once the threshold has been reached, it switches to
+daily aggregate digests.
 
 The scheduled worker periodically calls `getChatMemberCount` as a reconciliation
 check. The count is adjusted by `NOME_TRACKED_CHANNEL_COUNT_OFFSET` for members

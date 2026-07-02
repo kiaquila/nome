@@ -108,6 +108,39 @@ async def test_join_below_threshold_updates_roster_and_notifies_owner(
 
 
 @pytest.mark.asyncio
+async def test_failed_immediate_member_notification_is_retried(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=1, threshold=3)
+    original_send_message = telegram.send_message
+
+    async def failed_send_message(
+        *,
+        chat_id: int,
+        text: str,
+        business_connection_id: str | None = None,
+    ) -> int:
+        raise OSError("temporary network failure")
+
+    monkeypatch.setattr(telegram, "send_message", failed_send_message)
+    await handler.handle_update(
+        _chat_member_update(old_status="left", new_status="member", user_id=2),
+        now=200,
+    )
+
+    assert _member_count(storage.path) == 2
+    assert telegram.sent == []
+    assert await handler.process_due_channel_notifications(now=499) == 0
+
+    monkeypatch.setattr(telegram, "send_message", original_send_message)
+    assert await handler.process_due_channel_notifications(now=500) == 1
+    assert len(telegram.sent) == 1
+    assert "подписался" in telegram.sent[0]["text"]
+
+
+@pytest.mark.asyncio
 async def test_join_that_reaches_threshold_sends_final_immediate_notice(
     channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -375,6 +408,51 @@ def test_roster_import_prefers_configured_channel_key(
     finally:
         connection.close()
     assert rows == [("-100123", 1)]
+
+
+def test_roster_import_normalizes_explicit_channel_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "nome.sqlite3"
+    snapshot_path = tmp_path / "roster.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "members": [
+                    {
+                        "user_id": 1,
+                        "username": "reader",
+                        "first_name": "Reader",
+                        "last_name": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(database_path))
+    monkeypatch.delenv("NOME_TRACKED_CHANNEL_ID", raising=False)
+    monkeypatch.delenv("NOME_TRACKED_CHANNEL_USERNAME", raising=False)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "nome-channel-roster-import",
+            "--input",
+            str(snapshot_path),
+            "--channel-key",
+            "@ExampleChannel",
+        ],
+    )
+
+    import_roster_main()
+
+    connection = sqlite3.connect(database_path)
+    try:
+        rows = connection.execute("SELECT channel_key, user_id FROM channel_members").fetchall()
+    finally:
+        connection.close()
+    assert rows == [("examplechannel", 1)]
 
 
 def _seed_roster(storage: SQLiteStorage, *, count: int, threshold: int) -> None:
