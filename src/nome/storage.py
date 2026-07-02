@@ -785,6 +785,7 @@ class SQLiteStorage:
         threshold: int,
         owner_chat_id: int | None = None,
         notification_change: ChannelMemberChange | None = None,
+        notification_now: int | None = None,
     ) -> ChannelMemberChangeResult | None:
         pending_notification_id: int | None = None
         notification_text: str | None = None
@@ -951,7 +952,7 @@ class SQLiteStorage:
                     channel_key=channel_key,
                     owner_chat_id=owner_chat_id,
                     text=notification_text,
-                    now=now,
+                    now=notification_now if notification_now is not None else now,
                 )
 
         return ChannelMemberChangeResult(
@@ -1013,6 +1014,9 @@ class SQLiteStorage:
         ]
 
     def mark_channel_notification_sent(self, *, notification_id: int) -> None:
+        self.delete_channel_notification(notification_id=notification_id)
+
+    def delete_channel_notification(self, *, notification_id: int) -> None:
         with self._connect() as connection:
             connection.execute(
                 """

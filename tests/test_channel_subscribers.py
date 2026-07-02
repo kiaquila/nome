@@ -141,6 +141,83 @@ async def test_failed_immediate_member_notification_is_retried(
 
 
 @pytest.mark.asyncio
+async def test_pending_member_notification_retry_uses_processing_time(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=1, threshold=3)
+    original_send_message = telegram.send_message
+    checking_retry = False
+
+    async def send_message_with_concurrent_retry(
+        *,
+        chat_id: int,
+        text: str,
+        business_connection_id: str | None = None,
+    ) -> int:
+        nonlocal checking_retry
+        if not checking_retry:
+            checking_retry = True
+            try:
+                assert await handler.process_due_channel_notifications(now=1_000) == 0
+            finally:
+                checking_retry = False
+        return await original_send_message(
+            chat_id=chat_id,
+            text=text,
+            business_connection_id=business_connection_id,
+        )
+
+    monkeypatch.setattr(telegram, "send_message", send_message_with_concurrent_retry)
+    await handler.handle_update(
+        _chat_member_update(old_status="left", new_status="member", user_id=2),
+        now=1_000,
+    )
+
+    assert len(telegram.sent) == 1
+    assert "подписался" in telegram.sent[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_pending_member_notification_is_dropped_when_owner_config_changes(
+    channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler, storage, telegram = channel_handler
+    _seed_roster(storage, count=1, threshold=3)
+
+    async def failed_send_message(
+        *,
+        chat_id: int,
+        text: str,
+        business_connection_id: str | None = None,
+    ) -> int:
+        raise OSError("temporary network failure")
+
+    monkeypatch.setattr(telegram, "send_message", failed_send_message)
+    await handler.handle_update(
+        _chat_member_update(old_status="left", new_status="member", user_id=2),
+        now=200,
+    )
+
+    changed_settings = Settings(
+        bot_token="test-token",
+        database_path=storage.path,
+        owner_chat_id=901,
+        tracked_channel_username=TEST_CHANNEL_USERNAME,
+    )
+    changed_handler = UpdateHandler(
+        settings=changed_settings,
+        storage=storage,
+        telegram=telegram,  # type: ignore[arg-type]
+    )
+
+    assert await changed_handler.process_due_channel_notifications(now=500) == 0
+    assert _pending_channel_notification_count(storage.path) == 0
+
+
+@pytest.mark.asyncio
 async def test_join_that_reaches_threshold_sends_final_immediate_notice(
     channel_handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -576,6 +653,16 @@ def _human_count(path: Path) -> int:
     connection = sqlite3.connect(path)
     try:
         row = connection.execute("SELECT COUNT(*) FROM channel_members WHERE is_bot = 0").fetchone()
+    finally:
+        connection.close()
+    assert row is not None
+    return int(row[0])
+
+
+def _pending_channel_notification_count(path: Path) -> int:
+    connection = sqlite3.connect(path)
+    try:
+        row = connection.execute("SELECT COUNT(*) FROM channel_pending_notifications").fetchone()
     finally:
         connection.close()
     assert row is not None

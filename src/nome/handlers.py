@@ -169,11 +169,23 @@ class UpdateHandler:
 
     async def process_due_channel_notifications(self, *, now: int | None = None) -> int:
         current_time = utc_timestamp() if now is None else now
+        active_channel_key = self.settings.tracked_channel_key
+        active_owner_chat_id = self.settings.owner_chat_id
         sent_count = 0
         for notification in self.storage.due_channel_notifications(now=current_time):
+            if (
+                not self.settings.channel_tracking_enabled
+                or active_channel_key is None
+                or active_owner_chat_id is None
+                or notification.channel_key != active_channel_key
+                or notification.owner_chat_id != active_owner_chat_id
+            ):
+                LOGGER.info("Dropping stale pending channel notification.")
+                self.storage.delete_channel_notification(notification_id=notification.id)
+                continue
             try:
                 await self.telegram.send_message(
-                    chat_id=notification.owner_chat_id,
+                    chat_id=active_owner_chat_id,
                     text=notification.text,
                 )
             except (TelegramAPIError, OSError) as error:
@@ -328,6 +340,7 @@ class UpdateHandler:
             threshold=self.settings.tracked_channel_threshold,
             owner_chat_id=self.settings.owner_chat_id,
             notification_change=change,
+            notification_now=now,
         )
         if result is None or not result.notify_immediately:
             return

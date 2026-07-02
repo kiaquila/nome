@@ -132,7 +132,7 @@ class Settings:
             worker_poll_interval_seconds=float(os.getenv("NOME_WORKER_POLL_SECONDS", "5")),
             long_poll_timeout_seconds=long_poll_timeout_seconds,
             polling_error_backoff_seconds=polling_error_backoff_seconds,
-            owner_chat_id=_optional_int("NOME_OWNER_CHAT_ID") or _optional_int("TELEGRAM_CHAT_ID"),
+            owner_chat_id=_optional_int("NOME_OWNER_CHAT_ID"),
             tracked_channel_username=normalize_username(os.getenv("NOME_TRACKED_CHANNEL_USERNAME"))
             or None,
             tracked_channel_id=_optional_int("NOME_TRACKED_CHANNEL_ID"),
