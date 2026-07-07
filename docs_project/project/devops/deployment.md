@@ -51,12 +51,12 @@ The host uses Ubuntu or another systemd Linux distribution with Python 3.12,
 - passwordless `sudo -u DEPLOY_SERVICE_USER` when it is separate from the
   service user, because the deploy script runs filesystem writes as the service
   account;
-- passwordless `sudo` for installing and restarting `nome.service`;
 - outbound network access to install the pinned `uv` bootstrap package when the
   host has not cached it yet.
 
 The service user owns the runtime files and should be able to read `.env`, write
-`data/`, and update deploy metadata under `DEPLOY_TARGET_DIR`. `DEPLOY_SERVICE_USER`
+`data/`, update deploy metadata under `DEPLOY_TARGET_DIR`, and use passwordless
+`sudo` for installing and restarting `nome.service`. `DEPLOY_SERVICE_USER`
 defaults to `ubuntu`, and `DEPLOY_SERVICE_GROUP` defaults to the service user.
 The workflow performs archive extraction and release application as this service
 user so hardened SSH-user umasks do not hide release files from the runtime
@@ -75,7 +75,8 @@ checks that the file exists; it does not print, upload, replace, or delete it.
 
 1. GitHub archives the exact checked-out Git revision.
 2. The archive is copied to `/tmp/nome-release-<sha>.tar.gz` on the SSH host.
-3. The SSH command extracts the archive into a temporary release directory.
+3. The SSH command switches to the service user and extracts the archive into a
+   temporary release directory.
 4. `scripts/deploy_release.sh` synchronizes tracked files into the stable target
    directory while preserving `.env`, `.venv`, `data/`, deploy metadata,
    Telethon sessions, logs, and SQLite files.

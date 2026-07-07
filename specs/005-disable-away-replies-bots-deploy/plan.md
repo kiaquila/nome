@@ -50,6 +50,10 @@ the service user. The SSH account only uploads the release tarball, makes that
 tarball readable to the service account, and removes the tarball and temporary
 bootstrap script after the deploy finishes.
 
+Because `scripts/deploy_release.sh` runs as the service user, the service user
+must also have the passwordless `sudo` rights needed for systemd unit install,
+daemon reload, enable, restart, and status checks.
+
 ## Verification
 
 - Add unit coverage for disabled contacts at inbound-recording time and at
