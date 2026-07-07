@@ -28,7 +28,7 @@ application. Replace the GitHub Actions transport layer:
 - configure strict SSH from repository secrets;
 - copy the archive to `/tmp/nome-release-<sha>.tar.gz` on the production host;
 - run a small remote bootstrap that extracts the archive and invokes
-  `scripts/deploy_release.sh`.
+  `scripts/deploy_release.sh` as the configured service user.
 
 The workflow should require a pinned known-hosts entry and a private key secret
 instead of disabling host-key checking. The host-side script keeps private
@@ -39,7 +39,13 @@ The service user and group become optional deploy-script inputs so the new host
 can run `nome.service` as a non-`ubuntu` account while preserving the current
 default.
 
-## Validation
+The SSH user should normally be the same account as the service user. If the
+host requires a separate SSH account, that account must be able to run the
+deploy script as `DEPLOY_SERVICE_USER` through passwordless `sudo -u`; this
+keeps the runtime `.env`, data directory, deploy metadata, and release files
+readable and writable by the systemd service account.
+
+## Verification
 
 - Add unit coverage for disabled contacts at inbound-recording time and at
   due-reply recheck time.

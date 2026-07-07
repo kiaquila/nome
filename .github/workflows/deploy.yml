@@ -171,13 +171,21 @@ jobs:
           tar -xzf "$REMOTE_ARCHIVE" -C "$release_dir"
           chmod +x "$release_dir/scripts/deploy_release.sh"
 
-          env \
-            TARGET_DIR="$DEPLOY_TARGET_DIR" \
-            RELEASE_SHA="$RELEASE_SHA" \
-            RELEASE_SOURCE_DIR="$release_dir" \
-            SERVICE_USER="$SERVICE_USER" \
-            SERVICE_GROUP="$SERVICE_GROUP" \
+          deploy_command=(
+            env
+            "TARGET_DIR=$DEPLOY_TARGET_DIR"
+            "RELEASE_SHA=$RELEASE_SHA"
+            "RELEASE_SOURCE_DIR=$release_dir"
+            "SERVICE_USER=$SERVICE_USER"
+            "SERVICE_GROUP=$SERVICE_GROUP"
             bash "$release_dir/scripts/deploy_release.sh"
+          )
+
+          if [[ "$(id -un)" = "$SERVICE_USER" ]]; then
+            "${deploy_command[@]}"
+          else
+            sudo -n -u "$SERVICE_USER" -H "${deploy_command[@]}"
+          fi
           EOF
 
           remote_command=$(

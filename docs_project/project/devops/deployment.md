@@ -47,10 +47,17 @@ ssh-keyscan -H bots
 The host uses Ubuntu or another systemd Linux distribution with Python 3.12,
 `rsync`, `flock`, `tar`, `bash`, and `sudo`. The SSH deployment user needs:
 
-- write access to `DEPLOY_TARGET_DIR`;
+- write access to `DEPLOY_TARGET_DIR` when it is also the service user;
+- passwordless `sudo -u DEPLOY_SERVICE_USER` when it is separate from the
+  service user, because the deploy script runs filesystem writes as the service
+  account;
 - passwordless `sudo` for installing and restarting `nome.service`;
 - outbound network access to install the pinned `uv` bootstrap package when the
   host has not cached it yet.
+
+The service user owns the runtime files and should be able to read `.env`, write
+`data/`, and update deploy metadata under `DEPLOY_TARGET_DIR`. `DEPLOY_SERVICE_USER`
+defaults to `ubuntu`, and `DEPLOY_SERVICE_GROUP` defaults to the service user.
 
 Before the first workflow deployment, provision this file directly on the host:
 
