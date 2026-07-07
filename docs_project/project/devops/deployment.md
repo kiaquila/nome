@@ -15,6 +15,14 @@ GitHub logs keep deployment coordinates in masked repository secrets. The host's
 runtime `.env`, SQLite data, virtual environment, Telethon sessions, and deploy
 metadata stay on the server across releases.
 
+The workflow records a GitHub Deployment for the `production` environment on
+every run: it opens the deployment in the `in_progress` state before touching
+the host and closes it as `success` or `failure` from the final job status.
+These objects populate the repository **Deployments** section and the
+`production` environment view, so each merge to `main` shows an auditable
+production deployment. This needs the workflow's `deployments: write` permission
+and creates no runtime side effects.
+
 ## GitHub Secrets
 
 Define these repository-level GitHub Actions secrets:

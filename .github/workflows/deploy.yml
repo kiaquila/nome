@@ -18,6 +18,7 @@ env:
 
 permissions:
   contents: read
+  deployments: write
 
 concurrency:
   group: nome-deploy-production
@@ -75,6 +76,40 @@ jobs:
           set -euo pipefail
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "archive=$RUNNER_TEMP/nome-release.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Start GitHub deployment
+        id: deployment
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        with:
+          script: |
+            const releaseSha = process.env.RELEASE_SHA;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: releaseSha,
+              environment: "production",
+              production_environment: true,
+              required_contexts: [],
+              auto_merge: false,
+              transient_environment: false,
+              description: `Deploy ${releaseSha.slice(0, 7)} to production`,
+            });
+            if (!("id" in deployment.data)) {
+              core.setFailed(`Failed to create deployment: ${deployment.data.message || "unknown error"}`);
+              return;
+            }
+            core.setOutput("id", deployment.data.id);
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: "in_progress",
+              log_url: runUrl,
+              description: "Deploying release to production.",
+            });
 
       - name: Create release archive
         shell: bash
@@ -225,3 +260,24 @@ jobs:
           timeout "$SSH_EXECUTION_TIMEOUT_SECONDS" \
             ssh -F "${{ steps.ssh.outputs.config }}" nome-production "$remote_command" \
             < "$RUNNER_TEMP/remote-deploy.sh"
+
+      - name: Finalize GitHub deployment
+        if: always() && steps.deployment.outputs.id
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number(process.env.DEPLOYMENT_ID),
+              state,
+              log_url: runUrl,
+              description: state === "success"
+                ? "Production deploy succeeded."
+                : "Production deploy failed.",
+            });
