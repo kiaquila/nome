@@ -343,6 +343,7 @@ class SQLiteStorage:
         delay_seconds: int,
         cooldown_seconds: int,
         owner_active_window_seconds: int = 0,
+        auto_reply_enabled: bool = True,
     ) -> ScheduleResult:
         due_at = now + delay_seconds
         with self._connect() as connection:
@@ -408,6 +409,16 @@ class SQLiteStorage:
                     now,
                 ),
             )
+
+            if not auto_reply_enabled:
+                connection.execute(
+                    """
+                    DELETE FROM pending_replies
+                    WHERE business_connection_id = ? AND chat_id = ?
+                    """,
+                    (business_connection_id, chat_id),
+                )
+                return ScheduleResult(scheduled=False, due_at=None)
 
             if last_auto_reply_at is not None and now - last_auto_reply_at < cooldown_seconds:
                 return ScheduleResult(

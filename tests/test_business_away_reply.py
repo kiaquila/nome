@@ -50,6 +50,7 @@ def handler(tmp_path: Path) -> tuple[UpdateHandler, SQLiteStorage, FakeTelegram]
         database_path=tmp_path / "nome.sqlite3",
         auto_reply_delay_seconds=300,
         auto_reply_cooldown_hours=12,
+        auto_reply_disabled_usernames=(),
     )
     return (
         UpdateHandler(settings=settings, storage=storage, telegram=telegram),  # type: ignore[arg-type]
@@ -467,6 +468,28 @@ async def test_ignores_business_messages_outside_selected_chat_allowlist(
 
 
 @pytest.mark.asyncio
+async def test_disabled_auto_reply_chat_is_tracked_without_scheduling(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    disabled_handler = UpdateHandler(
+        settings=replace(
+            update_handler.settings,
+            auto_reply_disabled_usernames=("chapppp", "AlexOxitocin"),
+        ),
+        storage=storage,
+        telegram=telegram,  # type: ignore[arg-type]
+    )
+    await disabled_handler.handle_update(_connection_update(), now=1_000)
+    await disabled_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+
+    assert storage.due_replies(now=1_300) == []
+    assert await disabled_handler.process_due_replies(now=1_300) == 0
+    assert telegram.sent == []
+    assert storage.unread_chats()
+
+
+@pytest.mark.asyncio
 async def test_pending_reply_rechecks_chat_allowlist_before_sending(
     handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
 ) -> None:
@@ -480,6 +503,24 @@ async def test_pending_reply_rechecks_chat_allowlist_before_sending(
     )
 
     assert await restricted_handler.process_due_replies(now=1_300) == 0
+    assert storage.due_replies(now=1_300) == []
+    assert telegram.sent == []
+
+
+@pytest.mark.asyncio
+async def test_pending_reply_rechecks_disabled_auto_reply_chat_before_sending(
+    handler: tuple[UpdateHandler, SQLiteStorage, FakeTelegram],
+) -> None:
+    update_handler, storage, telegram = handler
+    await update_handler.handle_update(_connection_update(), now=1_000)
+    await update_handler.handle_update(_inbound_update(message_id=11), now=1_000)
+    disabled_handler = UpdateHandler(
+        settings=replace(update_handler.settings, auto_reply_disabled_usernames=("chapppp",)),
+        storage=storage,
+        telegram=telegram,  # type: ignore[arg-type]
+    )
+
+    assert await disabled_handler.process_due_replies(now=1_300) == 0
     assert storage.due_replies(now=1_300) == []
     assert telegram.sent == []
 
@@ -592,6 +633,19 @@ def test_from_env_defaults_reply_timing(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert settings.auto_reply_delay_seconds == 180
     assert settings.owner_active_window_hours == 12
     assert settings.owner_active_window_seconds == 43_200
+    assert settings.auto_reply_disabled_usernames == ("chapppp", "AlexOxitocin")
+
+
+def test_from_env_can_clear_disabled_auto_reply_users(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("NOME_DATABASE_PATH", str(tmp_path / "nome.sqlite3"))
+    monkeypatch.setenv("NOME_AUTO_REPLY_DISABLED_USERNAMES", "")
+
+    settings = Settings.from_env()
+
+    assert settings.auto_reply_disabled_usernames == ()
 
 
 def test_from_env_requires_explicit_owner_chat_id_for_owner_notices(

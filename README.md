@@ -4,6 +4,8 @@ Nome is a private Telegram Business personal assistant bot. In v1 it can act as
 a Telegram Chat Automation assistant for selected personal chats: if the owner
 does not answer for three minutes, Nome sends one clear away reply on the
 owner's behalf and will not repeat that reply to the same chat for twelve hours.
+Auto-replies for the currently selected personal chats are disabled by default
+through `NOME_AUTO_REPLY_DISABLED_USERNAMES` while inbound tracking remains on.
 
 The repository keeps feature memory in `specs/` and durable product context in
 `docs_project/`. Product runtime code is Python.
@@ -57,13 +59,13 @@ subscriber tracking is configured.
 
 ## Production Deployment
 
-Merges to `main` deploy through GitHub Actions using AWS OIDC, S3, and Systems
-Manager. The server keeps its own `.env`, virtual environment, SQLite data, and
-private session files across releases. Runtime secrets are never copied into
-GitHub.
+Merges to `main` deploy through GitHub Actions over SSH to the production
+`bots` host. The server keeps its own `.env`, virtual environment, SQLite data,
+and private session files across releases. Runtime secrets are never copied
+into GitHub.
 
-See `docs_project/project/devops/deployment.md` for environment variables, AWS
-permissions, host prerequisites, and operational checks.
+See `docs_project/project/devops/deployment.md` for GitHub secrets, SSH host
+prerequisites, and operational checks.
 
 ## Telegram Business Setup
 
@@ -75,7 +77,9 @@ uv run python -m nome.business_setup
 ```
 
 The setup command defaults to `@nome_ai_bot` and the selected users `@chapppp`
-and `@AlexOxitocin`. It grants only `read_messages` and `reply` rights.
+and `@AlexOxitocin`. It grants only `read_messages` and `reply` rights. Runtime
+auto-replies for those selected users are disabled by default until
+`NOME_AUTO_REPLY_DISABLED_USERNAMES` is cleared or narrowed.
 
 ## Channel Subscriber Tracking
 
@@ -105,6 +109,8 @@ current roster, updates it from future `chat_member` events, and uses
 - Message text is not persisted.
 - Channel subscriber history is not persisted; Nome keeps the current roster
   plus aggregate daily counters.
+- Auto-replies to `@chapppp` and `@AlexOxitocin` are disabled by default, while
+  their inbound chats can still appear in owner status.
 - Nome answers a private Business chat at most once per twelve hours.
 
 See `docs_project/project/product-brief.md` and
