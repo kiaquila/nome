@@ -157,17 +157,25 @@ jobs:
             exit 1
           fi
 
-          tmp_dir="/tmp/nome-deploy-${RELEASE_SHA}"
-          release_dir="${tmp_dir}/release"
-
-          rm -rf "$tmp_dir"
-          mkdir -p "$release_dir"
+          bootstrap_script="/tmp/nome-deploy-bootstrap-${RELEASE_SHA}.sh"
           cleanup() {
-            rm -rf "$tmp_dir"
             rm -f "$REMOTE_ARCHIVE"
+            rm -f "$bootstrap_script"
           }
           trap cleanup EXIT
 
+          cat > "$bootstrap_script" <<'BOOTSTRAP'
+          set -euo pipefail
+
+          tmp_dir="$(mktemp -d "/tmp/nome-deploy-${RELEASE_SHA}.XXXXXX")"
+          release_dir="${tmp_dir}/release"
+
+          cleanup_release() {
+            rm -rf "$tmp_dir"
+          }
+          trap cleanup_release EXIT
+
+          mkdir -p "$release_dir"
           tar -xzf "$REMOTE_ARCHIVE" -C "$release_dir"
           chmod +x "$release_dir/scripts/deploy_release.sh"
 
@@ -181,10 +189,26 @@ jobs:
             bash "$release_dir/scripts/deploy_release.sh"
           )
 
+          "${deploy_command[@]}"
+          BOOTSTRAP
+
+          chmod 0755 "$bootstrap_script"
+          chmod a+r "$REMOTE_ARCHIVE"
+
+          bootstrap_command=(
+            env
+            "DEPLOY_TARGET_DIR=$DEPLOY_TARGET_DIR"
+            "RELEASE_SHA=$RELEASE_SHA"
+            "REMOTE_ARCHIVE=$REMOTE_ARCHIVE"
+            "SERVICE_USER=$SERVICE_USER"
+            "SERVICE_GROUP=$SERVICE_GROUP"
+            bash "$bootstrap_script"
+          )
+
           if [[ "$(id -un)" = "$SERVICE_USER" ]]; then
-            "${deploy_command[@]}"
+            "${bootstrap_command[@]}"
           else
-            sudo -n -u "$SERVICE_USER" -H "${deploy_command[@]}"
+            sudo -n -u "$SERVICE_USER" -H "${bootstrap_command[@]}"
           fi
           EOF
 

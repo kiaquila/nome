@@ -45,6 +45,11 @@ deploy script as `DEPLOY_SERVICE_USER` through passwordless `sudo -u`; this
 keeps the runtime `.env`, data directory, deploy metadata, and release files
 readable and writable by the systemd service account.
 
+When the accounts differ, the remote bootstrap also runs archive extraction as
+the service user. The SSH account only uploads the release tarball, makes that
+tarball readable to the service account, and removes the tarball and temporary
+bootstrap script after the deploy finishes.
+
 ## Verification
 
 - Add unit coverage for disabled contacts at inbound-recording time and at

@@ -58,6 +58,9 @@ The host uses Ubuntu or another systemd Linux distribution with Python 3.12,
 The service user owns the runtime files and should be able to read `.env`, write
 `data/`, and update deploy metadata under `DEPLOY_TARGET_DIR`. `DEPLOY_SERVICE_USER`
 defaults to `ubuntu`, and `DEPLOY_SERVICE_GROUP` defaults to the service user.
+The workflow performs archive extraction and release application as this service
+user so hardened SSH-user umasks do not hide release files from the runtime
+account.
 
 Before the first workflow deployment, provision this file directly on the host:
 
