@@ -49,6 +49,13 @@ recently is hers to continue, so Nome only auto-replies to genuinely new
 inbound threads. The contact's message is still recorded for the status report
 even when no away reply is scheduled.
 
+Auto-replies can also be disabled per selected username with
+`NOME_AUTO_REPLY_DISABLED_USERNAMES`, which defaults to `chapppp,AlexOxitocin`.
+Disabled chats still pass the selected-chat allowlist and still update inbound
+status state, but Nome does not create or send pending away replies for them.
+The due-reply worker rechecks the disabled list before sending so a deployment
+can cancel already queued replies by configuration.
+
 The polling worker deletes any previously configured Telegram webhook on
 startup so `getUpdates` cannot race against a stale subscription, then keeps
 the highest acknowledged `update_id` in memory and advances the offset whether

@@ -13,13 +13,11 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  SSM_START_TIMEOUT_SECONDS: "300"
-  SSM_EXECUTION_TIMEOUT_SECONDS: "1200"
-  SSM_POLL_INTERVAL_SECONDS: "15"
+  SSH_CONNECT_TIMEOUT_SECONDS: "30"
+  SSH_EXECUTION_TIMEOUT_SECONDS: "1200"
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: nome-deploy-production
@@ -29,7 +27,7 @@ jobs:
   deploy-production:
     name: deploy-production
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 35
 
     steps:
       - name: Checkout release revision
@@ -51,18 +49,24 @@ jobs:
       - name: Validate deployment configuration
         shell: bash
         env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          DEPLOY_S3_BUCKET: ${{ secrets.DEPLOY_S3_BUCKET }}
-          DEPLOY_INSTANCE_ID: ${{ secrets.DEPLOY_INSTANCE_ID }}
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
           DEPLOY_TARGET_DIR: ${{ secrets.DEPLOY_TARGET_DIR }}
         run: |
           set -euo pipefail
-          : "${AWS_REGION:?Set the AWS_REGION repository secret}"
-          : "${AWS_DEPLOY_ROLE_ARN:?Set the AWS_DEPLOY_ROLE_ARN repository secret}"
-          : "${DEPLOY_S3_BUCKET:?Set the DEPLOY_S3_BUCKET repository secret}"
-          : "${DEPLOY_INSTANCE_ID:?Set the DEPLOY_INSTANCE_ID repository secret}"
+          : "${DEPLOY_SSH_HOST:?Set the DEPLOY_SSH_HOST repository secret}"
+          : "${DEPLOY_SSH_USER:?Set the DEPLOY_SSH_USER repository secret}"
+          : "${DEPLOY_SSH_PRIVATE_KEY:?Set the DEPLOY_SSH_PRIVATE_KEY repository secret}"
+          : "${DEPLOY_SSH_KNOWN_HOSTS:?Set the DEPLOY_SSH_KNOWN_HOSTS repository secret}"
           : "${DEPLOY_TARGET_DIR:?Set the DEPLOY_TARGET_DIR repository secret}"
+          DEPLOY_SSH_PORT="${DEPLOY_SSH_PORT:-22}"
+          if ! [[ "$DEPLOY_SSH_PORT" =~ ^[0-9]+$ ]]; then
+            echo "DEPLOY_SSH_PORT must be numeric." >&2
+            exit 1
+          fi
 
       - name: Resolve release metadata
         id: release
@@ -72,135 +76,120 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "archive=$RUNNER_TEMP/nome-release.tar.gz" >> "$GITHUB_OUTPUT"
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@254c19bd240aabef8777f48595e9d2d7b972184b # v6.2.1
-        with:
-          aws-region: ${{ secrets.AWS_REGION }}
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          mask-aws-account-id: true
-
       - name: Create release archive
         shell: bash
         run: |
           set -euo pipefail
           git archive --format=tar.gz --output "${{ steps.release.outputs.archive }}" HEAD
 
-      - name: Upload release artifact
-        id: artifact
+      - name: Configure SSH
+        id: ssh
+        shell: bash
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$DEPLOY_SSH_HOST"
+          echo "::add-mask::$DEPLOY_SSH_USER"
+
+          ssh_dir="$RUNNER_TEMP/ssh"
+          key_path="$ssh_dir/deploy_key"
+          known_hosts_path="$ssh_dir/known_hosts"
+          config_path="$ssh_dir/config"
+
+          mkdir -p "$ssh_dir"
+          chmod 700 "$ssh_dir"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$key_path"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$known_hosts_path"
+          chmod 600 "$key_path" "$known_hosts_path"
+
+          cat > "$config_path" <<EOF
+          Host nome-production
+            HostName ${DEPLOY_SSH_HOST}
+            User ${DEPLOY_SSH_USER}
+            Port ${DEPLOY_SSH_PORT:-22}
+            IdentityFile ${key_path}
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ${known_hosts_path}
+            ConnectTimeout ${SSH_CONNECT_TIMEOUT_SECONDS}
+            LogLevel ERROR
+          EOF
+
+          chmod 600 "$config_path"
+          echo "config=$config_path" >> "$GITHUB_OUTPUT"
+
+      - name: Transfer release archive
+        id: transfer
         shell: bash
         env:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
-          key="releases/${RELEASE_SHA}.tar.gz"
-          aws s3 cp --only-show-errors "${{ steps.release.outputs.archive }}" "s3://${{ secrets.DEPLOY_S3_BUCKET }}/${key}"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
+          remote_archive="/tmp/nome-release-${RELEASE_SHA}.tar.gz"
+          timeout "$SSH_EXECUTION_TIMEOUT_SECONDS" \
+            scp -F "${{ steps.ssh.outputs.config }}" -q \
+            "${{ steps.release.outputs.archive }}" "nome-production:${remote_archive}"
+          echo "remote_archive=$remote_archive" >> "$GITHUB_OUTPUT"
 
-      - name: Send production deploy command
-        id: ssm
+      - name: Run production deploy
         shell: bash
         env:
           DEPLOY_TARGET_DIR: ${{ secrets.DEPLOY_TARGET_DIR }}
-          DEPLOY_INSTANCE_ID: ${{ secrets.DEPLOY_INSTANCE_ID }}
+          DEPLOY_SERVICE_USER: ${{ secrets.DEPLOY_SERVICE_USER }}
+          DEPLOY_SERVICE_GROUP: ${{ secrets.DEPLOY_SERVICE_GROUP }}
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          REMOTE_ARCHIVE: ${{ steps.transfer.outputs.remote_archive }}
         run: |
           set -euo pipefail
-          release_url=$(aws s3 presign "s3://${{ secrets.DEPLOY_S3_BUCKET }}/${{ steps.artifact.outputs.key }}" --expires-in 3600)
-          echo "::add-mask::$release_url"
+          service_user="${DEPLOY_SERVICE_USER:-ubuntu}"
+          service_group="${DEPLOY_SERVICE_GROUP:-$service_user}"
 
           cat > "$RUNNER_TEMP/remote-deploy.sh" <<'EOF'
           set -euo pipefail
 
+          if [[ "$REMOTE_ARCHIVE" != /tmp/nome-release-*.tar.gz ]]; then
+            echo "Refusing unexpected remote archive path." >&2
+            exit 1
+          fi
+
           tmp_dir="/tmp/nome-deploy-${RELEASE_SHA}"
-          archive_path="${tmp_dir}/release.tar.gz"
           release_dir="${tmp_dir}/release"
 
           rm -rf "$tmp_dir"
           mkdir -p "$release_dir"
-          trap 'rm -rf "$tmp_dir"' EXIT
+          cleanup() {
+            rm -rf "$tmp_dir"
+            rm -f "$REMOTE_ARCHIVE"
+          }
+          trap cleanup EXIT
 
-          ARCHIVE_PATH="$archive_path" RELEASE_URL="$RELEASE_URL" python3 - <<'PY'
-          import os
-          import urllib.request
-
-          urllib.request.urlretrieve(os.environ["RELEASE_URL"], os.environ["ARCHIVE_PATH"])
-          PY
-
-          tar -xzf "$archive_path" -C "$release_dir"
+          tar -xzf "$REMOTE_ARCHIVE" -C "$release_dir"
           chmod +x "$release_dir/scripts/deploy_release.sh"
 
-          sudo -u ubuntu -H env \
+          env \
             TARGET_DIR="$DEPLOY_TARGET_DIR" \
             RELEASE_SHA="$RELEASE_SHA" \
             RELEASE_SOURCE_DIR="$release_dir" \
+            SERVICE_USER="$SERVICE_USER" \
+            SERVICE_GROUP="$SERVICE_GROUP" \
             bash "$release_dir/scripts/deploy_release.sh"
           EOF
 
-          remote_script_b64=$(base64 < "$RUNNER_TEMP/remote-deploy.sh" | tr -d '\n')
-
-          jq -n \
-            --arg release_sha "$RELEASE_SHA" \
-            --arg release_url "$release_url" \
-            --arg target_dir "$DEPLOY_TARGET_DIR" \
-            --arg remote_script_b64 "$remote_script_b64" \
-            --arg execution_timeout "$SSM_EXECUTION_TIMEOUT_SECONDS" \
-            '{
-              commands: [
-                ("export RELEASE_SHA=" + ($release_sha | @sh)),
-                ("export RELEASE_URL=" + ($release_url | @sh)),
-                ("export DEPLOY_TARGET_DIR=" + ($target_dir | @sh)),
-                ("printf %s " + ($remote_script_b64 | @sh) + " | base64 -d > /tmp/run-nome-deploy.sh"),
-                "bash /tmp/run-nome-deploy.sh"
-              ],
-              executionTimeout: [$execution_timeout]
-            }' > "$RUNNER_TEMP/ssm-params.json"
-
-          command_id=$(
-            aws ssm send-command \
-              --instance-ids "$DEPLOY_INSTANCE_ID" \
-              --document-name "AWS-RunShellScript" \
-              --comment "Deploy Nome ${RELEASE_SHA}" \
-              --parameters "file://$RUNNER_TEMP/ssm-params.json" \
-              --timeout-seconds "$SSM_START_TIMEOUT_SECONDS" \
-              --query "Command.CommandId" \
-              --output text
+          remote_command=$(
+            printf \
+              'RELEASE_SHA=%q REMOTE_ARCHIVE=%q DEPLOY_TARGET_DIR=%q SERVICE_USER=%q SERVICE_GROUP=%q bash -s' \
+              "$RELEASE_SHA" \
+              "$REMOTE_ARCHIVE" \
+              "$DEPLOY_TARGET_DIR" \
+              "$service_user" \
+              "$service_group"
           )
 
-          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
-
-      - name: Wait for deploy completion
-        shell: bash
-        env:
-          DEPLOY_INSTANCE_ID: ${{ secrets.DEPLOY_INSTANCE_ID }}
-          COMMAND_ID: ${{ steps.ssm.outputs.command_id }}
-        run: |
-          set -euo pipefail
-
-          deadline=$((SECONDS + SSM_START_TIMEOUT_SECONDS + SSM_EXECUTION_TIMEOUT_SECONDS + SSM_POLL_INTERVAL_SECONDS))
-          while (( SECONDS < deadline )); do
-            status=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$DEPLOY_INSTANCE_ID" --query 'Status' --output text 2>/dev/null || true)
-
-            case "$status" in
-              Success)
-                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$DEPLOY_INSTANCE_ID" --query 'StandardOutputContent' --output text
-                exit 0
-                ;;
-              Pending|InProgress|Delayed|"")
-                sleep "$SSM_POLL_INTERVAL_SECONDS"
-                ;;
-              *)
-                echo "Deploy failed with status: $status"
-                echo "--- stdout ---"
-                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$DEPLOY_INSTANCE_ID" --query 'StandardOutputContent' --output text || true
-                echo "--- stderr ---"
-                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$DEPLOY_INSTANCE_ID" --query 'StandardErrorContent' --output text || true
-                exit 1
-                ;;
-            esac
-          done
-
-          echo "Deploy timed out waiting for SSM command completion; cancelling command."
-          aws ssm cancel-command --command-id "$COMMAND_ID" --instance-ids "$DEPLOY_INSTANCE_ID" >/dev/null 2>&1 || true
-          aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$DEPLOY_INSTANCE_ID" --query 'StandardOutputContent' --output text || true
-          aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$DEPLOY_INSTANCE_ID" --query 'StandardErrorContent' --output text || true
-          exit 1
+          timeout "$SSH_EXECUTION_TIMEOUT_SECONDS" \
+            ssh -F "${{ steps.ssh.outputs.config }}" nome-production "$remote_command" \
+            < "$RUNNER_TEMP/remote-deploy.sh"

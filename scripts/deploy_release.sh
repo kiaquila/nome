@@ -9,6 +9,8 @@ done
 RELEASE_SHA="${RELEASE_SHA:?RELEASE_SHA is required}"
 RELEASE_SOURCE_DIR="${RELEASE_SOURCE_DIR:-$(pwd)}"
 SERVICE_NAME="${SERVICE_NAME:-nome}"
+SERVICE_USER="${SERVICE_USER:-ubuntu}"
+SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
 SKIP_SERVICE_UPDATE="${SKIP_SERVICE_UPDATE:-0}"
 DEPLOY_METADATA_DIR="${TARGET_DIR}/.deploy"
 UV_TOOL_DIR="${DEPLOY_METADATA_DIR}/uv"
@@ -33,6 +35,16 @@ fi
 
 if [[ ! "$SERVICE_NAME" =~ ^[a-zA-Z0-9@_.-]+$ ]]; then
   echo "SERVICE_NAME contains unsupported characters." >&2
+  exit 1
+fi
+
+if [[ ! "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
+  echo "SERVICE_USER contains unsupported characters." >&2
+  exit 1
+fi
+
+if [[ ! "$SERVICE_GROUP" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
+  echo "SERVICE_GROUP contains unsupported characters." >&2
   exit 1
 fi
 
@@ -122,19 +134,27 @@ if [[ "$SKIP_SERVICE_UPDATE" != "1" ]]; then
   unit_template="$TARGET_DIR/deploy/nome.service"
   rendered_unit=$(mktemp)
 
-  TARGET_DIR="$TARGET_DIR" UNIT_TEMPLATE="$unit_template" RENDERED_UNIT="$rendered_unit" python3 - <<'PY'
+  TARGET_DIR="$TARGET_DIR" SERVICE_USER="$SERVICE_USER" SERVICE_GROUP="$SERVICE_GROUP" UNIT_TEMPLATE="$unit_template" RENDERED_UNIT="$rendered_unit" python3 - <<'PY'
 import os
 from pathlib import Path
 
 template_path = Path(os.environ["UNIT_TEMPLATE"])
 rendered_path = Path(os.environ["RENDERED_UNIT"])
-target_dir = os.environ["TARGET_DIR"]
 template = template_path.read_text(encoding="utf-8")
+replacements = {
+    "__TARGET_DIR__": os.environ["TARGET_DIR"],
+    "__SERVICE_USER__": os.environ["SERVICE_USER"],
+    "__SERVICE_GROUP__": os.environ["SERVICE_GROUP"],
+}
 
-if "__TARGET_DIR__" not in template:
-    raise SystemExit("Systemd unit template does not contain __TARGET_DIR__.")
+for placeholder in replacements:
+    if placeholder not in template:
+        raise SystemExit(f"Systemd unit template does not contain {placeholder}.")
 
-rendered_path.write_text(template.replace("__TARGET_DIR__", target_dir), encoding="utf-8")
+for placeholder, value in replacements.items():
+    template = template.replace(placeholder, value)
+
+rendered_path.write_text(template, encoding="utf-8")
 PY
 
   sudo install -m 0644 "$rendered_unit" "/etc/systemd/system/${SERVICE_NAME}.service"

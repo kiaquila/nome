@@ -7,6 +7,7 @@ from pathlib import Path
 OWNER_USERNAME = "ks_aquila"
 DEFAULT_BUSINESS_BOT_USERNAME = "nome_ai_bot"
 DEFAULT_SETUP_CHAT_USERNAMES = ("chapppp", "AlexOxitocin")
+DEFAULT_AUTO_REPLY_DISABLED_USERNAMES = DEFAULT_SETUP_CHAT_USERNAMES
 DEFAULT_AUTO_REPLY_TEXT = (
     "Привет! Я Nome, личный бот-ассистент Кристины. Рад приветствовать! "
     "Сейчас она занята, но обязательно ответит позже."
@@ -41,6 +42,13 @@ def _optional_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(item.strip().removeprefix("@") for item in value.split(",") if item.strip())
 
 
+def _csv_or_default(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return tuple(item.strip().removeprefix("@") for item in value.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class Settings:
     bot_token: str
@@ -49,6 +57,7 @@ class Settings:
     auto_reply_delay_seconds: int = 180
     auto_reply_cooldown_hours: int = 12
     owner_active_window_hours: int = 12
+    auto_reply_disabled_usernames: tuple[str, ...] = DEFAULT_AUTO_REPLY_DISABLED_USERNAMES
     auto_reply_text: str = DEFAULT_AUTO_REPLY_TEXT
     worker_poll_interval_seconds: float = 5.0
     long_poll_timeout_seconds: int = DEFAULT_LONG_POLL_TIMEOUT_SECONDS
@@ -128,6 +137,10 @@ class Settings:
             auto_reply_delay_seconds=int(os.getenv("NOME_AUTO_REPLY_DELAY_SECONDS", "180")),
             auto_reply_cooldown_hours=int(os.getenv("NOME_AUTO_REPLY_COOLDOWN_HOURS", "12")),
             owner_active_window_hours=int(os.getenv("NOME_OWNER_ACTIVE_WINDOW_HOURS", "12")),
+            auto_reply_disabled_usernames=_csv_or_default(
+                "NOME_AUTO_REPLY_DISABLED_USERNAMES",
+                DEFAULT_AUTO_REPLY_DISABLED_USERNAMES,
+            ),
             auto_reply_text=os.getenv("NOME_AUTO_REPLY_TEXT", DEFAULT_AUTO_REPLY_TEXT),
             worker_poll_interval_seconds=float(os.getenv("NOME_WORKER_POLL_SECONDS", "5")),
             long_poll_timeout_seconds=long_poll_timeout_seconds,
@@ -166,6 +179,12 @@ class Settings:
     @property
     def normalized_setup_chat_usernames(self) -> frozenset[str]:
         return frozenset(normalize_username(username) for username in self.setup_chat_usernames)
+
+    @property
+    def normalized_auto_reply_disabled_usernames(self) -> frozenset[str]:
+        return frozenset(
+            normalize_username(username) for username in self.auto_reply_disabled_usernames
+        )
 
     @property
     def channel_tracking_enabled(self) -> bool:

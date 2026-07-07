@@ -15,7 +15,9 @@ are implemented.
 ## First Capabilities
 
 - Reply through Telegram Business Chat Automation when the owner is busy and a
-  selected private chat has waited for three minutes.
+  selected private chat has waited for three minutes, with a reversible
+  username-level disabled list for contacts that should currently only be
+  tracked.
 - Report recent inbound private chats, away replies, and inferred unread chats
   through an owner-only Telegram command.
 - Track subscriber joins and leaves for one owner-configured Telegram channel

@@ -65,13 +65,14 @@ class UpdateHandler:
                 )
                 continue
 
+            pending_chat = ChatIdentity(
+                chat_id=pending.chat_id,
+                username=pending.chat_username,
+                display=pending.chat_display,
+            )
             if not self._is_allowed_business_chat(
-                ChatIdentity(
-                    chat_id=pending.chat_id,
-                    username=pending.chat_username,
-                    display=pending.chat_display,
-                )
-            ):
+                pending_chat
+            ) or self._is_auto_reply_disabled_chat(pending_chat):
                 self.storage.cancel_pending_reply(
                     business_connection_id=pending.business_connection_id,
                     chat_id=pending.chat_id,
@@ -416,6 +417,7 @@ class UpdateHandler:
             delay_seconds=self.settings.auto_reply_delay_seconds,
             cooldown_seconds=self.settings.auto_reply_cooldown_seconds,
             owner_active_window_seconds=self.settings.owner_active_window_seconds,
+            auto_reply_enabled=not self._is_auto_reply_disabled_chat(chat_identity),
         )
 
     async def _fetch_allowed_business_connection(
@@ -498,6 +500,11 @@ class UpdateHandler:
         if chat.username is None:
             return False
         return chat.username in self.settings.normalized_setup_chat_usernames
+
+    def _is_auto_reply_disabled_chat(self, chat: ChatIdentity) -> bool:
+        if chat.username is None:
+            return False
+        return chat.username in self.settings.normalized_auto_reply_disabled_usernames
 
 
 def _format_chat_lines(chats: list[Any]) -> list[str]:
