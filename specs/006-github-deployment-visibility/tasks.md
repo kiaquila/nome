@@ -12,5 +12,5 @@
 - [x] T006 Document the Deployments/Environments visibility in the deployment
   docs.
 - [x] T007 Validate with `actionlint` and `uv run python scripts/preflight.py`.
-- [ ] T008 Configure the production SSH deployment secrets in GitHub.
-- [ ] T009 Commit, push, and open a PR.
+- [x] T008 Configure the production SSH deployment secrets in GitHub.
+- [x] T009 Commit, push, and open a PR.
