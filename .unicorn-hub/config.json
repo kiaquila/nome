@@ -3,6 +3,8 @@
   "specsDir": "specs",
   "productPaths": [
     "README.md",
+    "Dockerfile",
+    ".dockerignore",
     ".github/",
     ".unicorn-hub/config.json",
     "docs_project/",
@@ -10,6 +12,7 @@
     ".specify/",
     ".env.example",
     "scripts/",
+    "deploy/",
     "src/",
     "tests/",
     "pyproject.toml",
