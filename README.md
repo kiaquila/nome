@@ -22,8 +22,9 @@ The repository keeps feature memory in `specs/` and durable product context in
 - `scripts/` contains local Python repository checks plus compatibility guard
   helpers used by existing GitHub workflows.
 - `.github/workflows/` runs Python CI, PR guard, AI review, and dependency scans.
-- `deploy/` and `scripts/deploy_release.sh` define the production systemd
-  service and host-side release procedure.
+- `Dockerfile` defines the immutable production runtime, and
+  `scripts/deploy_release.sh` performs the host-side container switch,
+  health verification, rollback, and image retention.
 
 ## Development Workflow
 
@@ -60,9 +61,12 @@ subscriber tracking is configured.
 ## Production Deployment
 
 Merges to `main` deploy through GitHub Actions over SSH to the production
-`bots` host. The server keeps its own `.env`, virtual environment, SQLite data,
-and private session files across releases. Runtime secrets are never copied
-into GitHub.
+`bots` host. GitHub Actions builds the exact merged revision as a Docker image;
+the server runs it as the single container `nome` and keeps its own `.env`,
+SQLite data, and private session files across releases. Runtime secrets are
+never copied into GitHub or into the image. After the first container release,
+the old `nome.service` runtime is retired. Later successful releases keep only
+the running image and the immediately previous healthy Nome image.
 
 See `docs_project/project/devops/deployment.md` for GitHub secrets, SSH host
 prerequisites, and operational checks.

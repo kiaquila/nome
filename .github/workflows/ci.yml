@@ -35,3 +35,20 @@ jobs:
 
       - name: Run preflight
         run: uv run python scripts/preflight.py
+
+  container-build:
+    name: container-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build production image
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg "RELEASE_SHA=$RELEASE_SHA" \
+            --tag "nome:$RELEASE_SHA" \
+            .

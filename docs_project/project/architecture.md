@@ -28,10 +28,11 @@ Nome v1 uses Python 3.12, the Telegram Bot API over `httpx` with long polling,
 Telethon for one-time Business chat automation and channel roster setup, and
 SQLite for private single-host persistence. A small FastAPI app exposes only a
 loopback `/healthz` endpoint that the deploy verifier polls; the bot itself does
-not need any inbound HTTP exposure. The runtime is intended for one AWS
-host/process in v1; horizontal scaling would require the pending-reply
-scheduler, channel digest scheduler, and single-consumer `getUpdates` loop to be
-reworked.
+not need any inbound HTTP exposure. Production runs one Docker container named
+`nome`, with the host `.env` loaded at startup and the host `data/` directory
+bind-mounted for SQLite. The runtime is intentionally single-container in v1;
+horizontal scaling would require the pending-reply scheduler, channel digest
+scheduler, and single-consumer `getUpdates` loop to be reworked.
 
 ## Business Chat Automation
 

@@ -3,25 +3,23 @@
 ## Overview
 
 Nome deploys to one production host over SSH from GitHub Actions. The workflow
-checks out the selected revision, builds a `git archive` tarball, copies it to
-the SSH target, and runs `scripts/deploy_release.sh` on the host. The current
-production host is reached operationally as `ssh bots`.
+builds the selected revision as `nome:<full-release-sha>`, exports the image with
+`docker image save`, copies it and a `git archive` bootstrap to the SSH target,
+and invokes `scripts/deploy_release.sh`. Production runs one Docker container
+named `nome`; application source and dependencies execute from the image.
 
 The workflow is defined in `.github/workflows/deploy.yml`. It runs after a push
 to `main` and can also be dispatched manually for a revision already contained
-in `main` history.
+in `main` history. The production host is reached operationally as `ssh bots`.
 
-GitHub logs keep deployment coordinates in masked repository secrets. The host's
-runtime `.env`, SQLite data, virtual environment, Telethon sessions, and deploy
-metadata stay on the server across releases.
+GitHub logs keep deployment coordinates in masked repository secrets. The
+host's runtime `.env`, SQLite data, private sessions, and deploy metadata remain
+on the server. They are never added to the image or transferred to GitHub.
 
-The workflow records a GitHub Deployment for the `production` environment on
-every run: it opens the deployment in the `in_progress` state before touching
-the host and closes it as `success` or `failure` from the final job status.
-These objects populate the repository **Deployments** section and the
-`production` environment view, so each merge to `main` shows an auditable
-production deployment. This needs the workflow's `deployments: write` permission
-and creates no runtime side effects.
+The workflow also records a GitHub Deployment for the `production` environment:
+it opens the deployment in `in_progress` before the image build and closes it as
+`success` or `failure` from the final job status. These records populate the
+repository **Deployments** section and `production` environment view.
 
 ## GitHub Secrets
 
@@ -31,99 +29,116 @@ Define these repository-level GitHub Actions secrets:
 | --- | --- |
 | `DEPLOY_SSH_HOST` | SSH host or address for production. Use `bots` only if GitHub Actions can resolve and reach that name; otherwise use the real host from the local SSH alias. |
 | `DEPLOY_SSH_PORT` | Optional SSH port. Defaults to `22` when omitted. |
-| `DEPLOY_SSH_USER` | SSH deployment user with passwordless `sudo` for systemd operations. |
-| `DEPLOY_SSH_PRIVATE_KEY` | Private key allowed to authenticate as the deployment user on the production host. |
+| `DEPLOY_SSH_USER` | SSH deployment user. It normally matches the service user. |
+| `DEPLOY_SSH_PRIVATE_KEY` | Private key allowed to authenticate as the deployment user. |
 | `DEPLOY_SSH_KNOWN_HOSTS` | Pinned known-hosts entry for the production host. |
-| `DEPLOY_TARGET_DIR` | Stable absolute host path to the dedicated Nome directory. The final path segment must be `nome`. |
-| `DEPLOY_SERVICE_USER` | Optional systemd service user. Defaults to `ubuntu`. |
-| `DEPLOY_SERVICE_GROUP` | Optional systemd service group. Defaults to the service user. |
+| `DEPLOY_TARGET_DIR` | Stable absolute host path to Nome's private state directory. The final path segment must be `nome`. |
+| `DEPLOY_SERVICE_USER` | Host account whose UID/GID runs inside the container. Defaults to `ubuntu`. |
+| `DEPLOY_SERVICE_GROUP` | Optional runtime group. Defaults to the service user. |
 
-These values are deployment coordinates, not runtime application secrets, but
-they remain in GitHub secrets so Actions masks them in evaluated step
-environment and script logs. Telegram tokens and other Nome settings must not
-be copied into GitHub variables or secrets.
+These values are deployment coordinates rather than runtime application
+secrets, but they remain in GitHub secrets so Actions masks them in evaluated
+step environments and script logs. Telegram tokens and other Nome settings must
+not be copied into GitHub variables or secrets.
 
-Use a pinned host key rather than disabling SSH host-key checking. For a host
-reachable as `bots`, generate the known-hosts value from a trusted machine with:
-
-```bash
-ssh-keyscan -H bots
-```
+Use a pinned host key rather than disabling SSH host-key checking. Generate the
+known-hosts value from a trusted machine with `ssh-keyscan` for the production
+hostname or address.
 
 ## Host Prerequisites
 
-The host uses Ubuntu or another systemd Linux distribution with Python 3.12,
-`rsync`, `flock`, `tar`, `bash`, and `sudo`. The SSH deployment user needs:
+The host needs Docker Engine, Python 3, `bash`, `flock`, `tar`, and `sudo`. The
+service user must:
 
-- write access to `DEPLOY_TARGET_DIR` when it is also the service user;
-- passwordless `sudo -u DEPLOY_SERVICE_USER` when it is separate from the
-  service user, because the deploy script runs filesystem writes as the service
-  account;
-- outbound network access to install the pinned `uv` bootstrap package when the
-  host has not cached it yet.
+- own and be able to write `DEPLOY_TARGET_DIR`, `data/`, and `.deploy/`;
+- be able to read the mode-`0600` runtime `.env`;
+- access the Docker daemon, normally through membership in the `docker` group;
+- have passwordless `sudo` for inspecting, stopping, disabling, and removing the
+  legacy `nome.service` during the first container migration.
 
-The service user owns the runtime files and should be able to read `.env`, write
-`data/`, update deploy metadata under `DEPLOY_TARGET_DIR`, and use passwordless
-`sudo` for installing and restarting `nome.service`. `DEPLOY_SERVICE_USER`
-defaults to `ubuntu`, and `DEPLOY_SERVICE_GROUP` defaults to the service user.
-The workflow performs archive extraction and release application as this service
-user so hardened SSH-user umasks do not hide release files from the runtime
-account.
+The SSH account should normally be the service user. If it differs, it must be
+able to run the extracted bootstrap as `DEPLOY_SERVICE_USER` through
+passwordless `sudo -u`. The workflow makes its temporary archives readable by
+that account, then removes them after the deploy attempt.
 
-Before the first workflow deployment, provision this file directly on the host:
+Before the first workflow deployment, provision the runtime environment file
+directly on the host:
 
 ```text
 <DEPLOY_TARGET_DIR>/.env
 ```
 
-It must be owned by the service user and have mode `0600`. Deployment only
-checks that the file exists; it does not print, upload, replace, or delete it.
+The deploy script checks the file and restores mode `0600`; it never prints,
+uploads, replaces, or deletes the file. `NOME_DATABASE_PATH` is overridden
+inside the container to `/app/data/nome.sqlite3`, which maps to the persistent
+host `data/` directory.
+
+## Container Runtime
+
+The production image uses a digest-pinned official Python 3.12 slim base and a
+locked, non-editable runtime environment. The running container is created with:
+
+- the exact name `nome` and image tag `nome:<release-sha>`;
+- numeric UID/GID resolved from the service account;
+- `--restart unless-stopped` and a 30-second stop timeout;
+- a read-only root filesystem, a small ephemeral `/tmp`, all Linux capabilities
+  dropped, `no-new-privileges`, and a process-count limit;
+- the host `.env` loaded through `--env-file` and only `data/` bind-mounted;
+- `127.0.0.1:8000:8000`, so the health endpoint is not published externally;
+- bounded local JSON logs and an image-defined `/healthz` Docker health check.
+
+Nome is intentionally a single container. Two instances would compete for the
+single Telegram `getUpdates` stream and run duplicate schedulers.
 
 ## Release Lifecycle
 
-1. GitHub archives the exact checked-out Git revision.
-2. The archive is copied to `/tmp/nome-release-<sha>.tar.gz` on the SSH host.
-3. The SSH command switches to the service user and extracts the archive into a
-   temporary release directory.
-4. `scripts/deploy_release.sh` synchronizes tracked files into the stable target
-   directory while preserving `.env`, `.venv`, `data/`, deploy metadata,
-   Telethon sessions, logs, and SQLite files.
-5. The script verifies that `uv.lock` matches project metadata, validates the
-   release in a staging virtual environment, compiles `src/nome`, then
-   synchronizes the live production virtual environment from the committed
-   lockfile, installs the managed systemd unit, and restarts `nome.service`.
-6. The release succeeds only when systemd reports the service active and the
-   loopback `/healthz` endpoint responds successfully.
-7. The deployed revision is recorded in `.deploy/current_release.json`.
+1. GitHub validates that the selected revision belongs to `main` history.
+2. The runner builds `nome:<release-sha>`, verifies the Nome/revision labels,
+   exports the image, and creates a source bootstrap archive.
+3. Both archives are copied to unique `/tmp` paths on the SSH host.
+4. The host deploy script takes the Nome deploy lock, validates private state
+   and Docker access, loads the image, and verifies the same labels again.
+5. The current runtime is stopped only after the candidate image is ready. On
+   the first migration this is `nome.service`; later it is the existing managed
+   `nome` container.
+6. The candidate starts with the hardened runtime arguments above. The deploy
+   succeeds only after Docker reports it `healthy`.
+7. If the first candidate fails, the old systemd service is restarted. If a
+   later candidate fails, the prior container image is recreated as `nome` and
+   checked for health. The workflow still fails so the attempted release is
+   visible as unsuccessful.
+8. After success, the legacy systemd unit is disabled and removed. Image cleanup
+   selects only `io.nome.managed=true` images and retains the running image plus
+   its immediate healthy predecessor. No global Docker prune runs.
+9. `.deploy/current_release.json` is atomically replaced with the release,
+   current image, previous image, container name, and UTC deployment time.
 
-Deployments are serialized in GitHub Actions and again on the host with a file
-lock. The service is loopback-only: Nome pulls Telegram updates via long
-polling, so the systemd unit only needs to bind `127.0.0.1:8000` for the deploy
-verifier's `/healthz` probe and never accepts inbound traffic from the network.
-
-The workflow gives the SSH copy and remote deploy command a twenty-minute
-execution window. If the GitHub command is interrupted or times out, inspect the
-host directly before retrying.
-
-The host script refuses broad parent directories and symlinked target paths. The
-target must be a dedicated directory whose final path segment is `nome` before
-the destructive `rsync --delete` step can run.
+The first successful container release has no previous Docker image, so only
+its current image remains. Starting with the second successful container
+release, exactly two Nome image IDs remain. A manual redeploy of the same SHA
+keeps the already recorded predecessor instead of collapsing the rollback slot.
 
 ## Operations
 
-Inspect the service on the host with:
+Inspect the runtime without reading secrets or application logs:
 
 ```bash
-ssh bots 'sudo systemctl status nome --no-pager'
-ssh bots 'sudo journalctl -u nome -n 100 --no-pager'
+ssh bots 'docker ps --filter name=^/nome$ --format "{{.Names}} {{.Image}} {{.Status}}"'
+ssh bots 'docker inspect --format "{{.State.Status}} {{.State.Health.Status}}" nome'
+ssh bots 'docker image ls --filter label=io.nome.managed=true'
 ```
 
-Inspect the deployed revision without reading runtime secrets:
+Inspect the deployed revision from the host-local metadata:
 
 ```bash
 ssh bots 'cat <DEPLOY_TARGET_DIR>/.deploy/current_release.json'
 ```
 
-A failed workflow reports only the remote deploy script's safe stderr/stdout.
-Inspect private service logs on the host, correct the release or host
-configuration, then dispatch the workflow again for a revision in `main`.
+Container logs may contain private operational context. Inspect them only on the
+host when necessary; the deployment workflow intentionally does not stream
+`docker logs` to GitHub.
+
+To redeploy or roll back operationally, dispatch **Deploy Production** for a
+revision contained in `main` history. The same health, rollback, retention, and
+metadata rules apply. If a deploy fails, inspect `.deploy/last_deploy.log` and
+container logs directly on the host before retrying.

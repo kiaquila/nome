@@ -74,8 +74,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "archive=$RUNNER_TEMP/nome-release.tar.gz" >> "$GITHUB_OUTPUT"
+          release_sha="$(git rev-parse HEAD)"
+          {
+            echo "sha=$release_sha"
+            echo "archive=$RUNNER_TEMP/nome-release.tar.gz"
+            echo "image_ref=nome:$release_sha"
+            echo "image_archive=$RUNNER_TEMP/nome-image.tar.gz"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Start GitHub deployment
         id: deployment
@@ -116,6 +121,37 @@ jobs:
         run: |
           set -euo pipefail
           git archive --format=tar.gz --output "${{ steps.release.outputs.archive }}" HEAD
+
+      - name: Build release image
+        shell: bash
+        env:
+          IMAGE_ARCHIVE: ${{ steps.release.outputs.image_archive }}
+          IMAGE_REF: ${{ steps.release.outputs.image_ref }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --pull \
+            --build-arg "RELEASE_SHA=$RELEASE_SHA" \
+            --tag "$IMAGE_REF" \
+            .
+
+          image_revision="$(
+            docker image inspect \
+              --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+              "$IMAGE_REF"
+          )"
+          image_managed="$(
+            docker image inspect \
+              --format '{{ index .Config.Labels "io.nome.managed" }}' \
+              "$IMAGE_REF"
+          )"
+          if [[ "$image_revision" != "$RELEASE_SHA" || "$image_managed" != "true" ]]; then
+            echo "The release image is missing its expected deployment labels." >&2
+            exit 1
+          fi
+
+          docker image save "$IMAGE_REF" | gzip -9 > "$IMAGE_ARCHIVE"
 
       - name: Configure SSH
         id: ssh
@@ -162,14 +198,22 @@ jobs:
         id: transfer
         shell: bash
         env:
+          IMAGE_ARCHIVE: ${{ steps.release.outputs.image_archive }}
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
           remote_archive="/tmp/nome-release-${RELEASE_SHA}.tar.gz"
+          remote_image_archive="/tmp/nome-image-${RELEASE_SHA}.tar.gz"
           timeout "$SSH_EXECUTION_TIMEOUT_SECONDS" \
             scp -F "${{ steps.ssh.outputs.config }}" -q \
             "${{ steps.release.outputs.archive }}" "nome-production:${remote_archive}"
-          echo "remote_archive=$remote_archive" >> "$GITHUB_OUTPUT"
+          timeout "$SSH_EXECUTION_TIMEOUT_SECONDS" \
+            scp -F "${{ steps.ssh.outputs.config }}" -q \
+            "$IMAGE_ARCHIVE" "nome-production:${remote_image_archive}"
+          {
+            echo "remote_archive=$remote_archive"
+            echo "remote_image_archive=$remote_image_archive"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run production deploy
         shell: bash
@@ -179,6 +223,7 @@ jobs:
           DEPLOY_SERVICE_GROUP: ${{ secrets.DEPLOY_SERVICE_GROUP }}
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
           REMOTE_ARCHIVE: ${{ steps.transfer.outputs.remote_archive }}
+          REMOTE_IMAGE_ARCHIVE: ${{ steps.transfer.outputs.remote_image_archive }}
         run: |
           set -euo pipefail
           service_user="${DEPLOY_SERVICE_USER:-ubuntu}"
@@ -191,10 +236,15 @@ jobs:
             echo "Refusing unexpected remote archive path." >&2
             exit 1
           fi
+          if [[ "$REMOTE_IMAGE_ARCHIVE" != /tmp/nome-image-*.tar.gz ]]; then
+            echo "Refusing unexpected remote image archive path." >&2
+            exit 1
+          fi
 
           bootstrap_script="/tmp/nome-deploy-bootstrap-${RELEASE_SHA}.sh"
           cleanup() {
             rm -f "$REMOTE_ARCHIVE"
+            rm -f "$REMOTE_IMAGE_ARCHIVE"
             rm -f "$bootstrap_script"
           }
           trap cleanup EXIT
@@ -218,9 +268,9 @@ jobs:
             env
             "TARGET_DIR=$DEPLOY_TARGET_DIR"
             "RELEASE_SHA=$RELEASE_SHA"
-            "RELEASE_SOURCE_DIR=$release_dir"
             "SERVICE_USER=$SERVICE_USER"
             "SERVICE_GROUP=$SERVICE_GROUP"
+            "IMAGE_ARCHIVE=$REMOTE_IMAGE_ARCHIVE"
             bash "$release_dir/scripts/deploy_release.sh"
           )
 
@@ -228,13 +278,14 @@ jobs:
           BOOTSTRAP
 
           chmod 0755 "$bootstrap_script"
-          chmod a+r "$REMOTE_ARCHIVE"
+          chmod a+r "$REMOTE_ARCHIVE" "$REMOTE_IMAGE_ARCHIVE"
 
           bootstrap_command=(
             env
             "DEPLOY_TARGET_DIR=$DEPLOY_TARGET_DIR"
             "RELEASE_SHA=$RELEASE_SHA"
             "REMOTE_ARCHIVE=$REMOTE_ARCHIVE"
+            "REMOTE_IMAGE_ARCHIVE=$REMOTE_IMAGE_ARCHIVE"
             "SERVICE_USER=$SERVICE_USER"
             "SERVICE_GROUP=$SERVICE_GROUP"
             bash "$bootstrap_script"
@@ -249,9 +300,10 @@ jobs:
 
           remote_command=$(
             printf \
-              'RELEASE_SHA=%q REMOTE_ARCHIVE=%q DEPLOY_TARGET_DIR=%q SERVICE_USER=%q SERVICE_GROUP=%q bash -s' \
+              'RELEASE_SHA=%q REMOTE_ARCHIVE=%q REMOTE_IMAGE_ARCHIVE=%q DEPLOY_TARGET_DIR=%q SERVICE_USER=%q SERVICE_GROUP=%q bash -s' \
               "$RELEASE_SHA" \
               "$REMOTE_ARCHIVE" \
+              "$REMOTE_IMAGE_ARCHIVE" \
               "$DEPLOY_TARGET_DIR" \
               "$service_user" \
               "$service_group"
