@@ -21,8 +21,8 @@ automatic rollback and operator recovery.
 ## Scope
 
 - Add a production Dockerfile for Python 3.12 and the locked Nome dependencies.
-- Build an image tagged `nome:<full-release-sha>` in GitHub Actions for every
-  production deployment.
+- Cross-build a `linux/arm64` image tagged `nome:<full-release-sha>` in GitHub
+  Actions for every production deployment.
 - Transfer the image and release bootstrap over the existing strict SSH path.
 - Run exactly one container named `nome` with:
   - host-local port `127.0.0.1:8000` mapped to the container health endpoint;
@@ -52,7 +52,8 @@ automatic rollback and operator recovery.
 ## Acceptance Criteria
 
 - AC-001: A push to `main` builds an image for the exact merged SHA and deploys
-  it through the existing serialized SSH workflow.
+  it for the production host architecture through the existing serialized SSH
+  workflow.
 - AC-002: Production runs one Docker container named `nome`; no active
   `nome.service` process remains after the first successful container deploy.
 - AC-003: The image contains no runtime `.env`, database, Telegram session, or

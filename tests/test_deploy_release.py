@@ -45,7 +45,17 @@ def option_value(name):
     return args[index + 1]
 
 
-if args == ["info"]:
+if args[0] == "info" and "--format" not in args:
+    raise SystemExit(0)
+
+if args[0] == "info" and "--format" in args:
+    template = option_value("--format")
+    if template == "{{.Architecture}}":
+        print(state.get("host_architecture", "aarch64"))
+    elif template == "{{.OSType}}":
+        print("linux")
+    else:
+        fail(f"unsupported info template: {template}")
     raise SystemExit(0)
 
 if args[:2] == ["image", "load"]:
@@ -55,6 +65,8 @@ if args[:2] == ["image", "load"]:
         "revision": candidate["revision"],
         "managed": True,
         "health": candidate["health"],
+        "architecture": candidate.get("architecture", "arm64"),
+        "os": "linux",
     }
     state["events"].append(f"load:{candidate['id']}")
     save()
@@ -71,6 +83,10 @@ if args[:2] == ["image", "inspect"]:
         print(image["revision"])
     elif template == "{{.Id}}":
         print(image_id)
+    elif template == "{{.Architecture}}":
+        print(image.get("architecture", "arm64"))
+    elif template == "{{.Os}}":
+        print(image.get("os", "linux"))
     else:
         fail(f"unsupported image template: {template}")
     raise SystemExit(0)
@@ -205,6 +221,8 @@ def _image(image_id: str, release_sha: str) -> dict[str, Any]:
         "revision": release_sha,
         "managed": True,
         "health": "healthy",
+        "architecture": "arm64",
+        "os": "linux",
     }
 
 
@@ -357,6 +375,38 @@ def test_failed_first_release_restores_legacy_service(tmp_path: Path) -> None:
     assert systemd_state["enabled"] is True
     assert not (target_dir / ".deploy/current_release.json").exists()
     assert "Restored the legacy Nome service" in result.stderr
+
+
+def test_wrong_architecture_is_rejected_before_stopping_service(tmp_path: Path) -> None:
+    release_sha = "1" * 40
+    candidate_id = f"sha256:{'a' * 64}"
+    result, _target_dir, docker_path, systemd_path = _run_deploy(
+        tmp_path,
+        docker_state={
+            "images": {},
+            "container": None,
+            "candidate": {
+                "id": candidate_id,
+                "ref": f"nome:{release_sha}",
+                "revision": release_sha,
+                "health": "healthy",
+                "architecture": "amd64",
+            },
+            "host_architecture": "aarch64",
+            "events": [],
+        },
+        systemd_active=True,
+        systemd_loaded=True,
+    )
+
+    assert result.returncode == 1
+    docker_state = json.loads(docker_path.read_text())
+    systemd_state = json.loads(systemd_path.read_text())
+    assert docker_state["container"] is None
+    assert docker_state["images"] == {}
+    assert systemd_state["active"] is True
+    assert "stop" not in systemd_state["events"]
+    assert "platform does not match" in result.stderr
 
 
 def test_later_release_keeps_only_current_and_previous_images(tmp_path: Path) -> None:

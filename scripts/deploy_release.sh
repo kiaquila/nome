@@ -133,6 +133,23 @@ if ! run_private docker info; then
   exit 1
 fi
 
+normalize_architecture() {
+  case "$1" in
+    aarch64 | arm64)
+      echo "arm64"
+      ;;
+    x86_64 | amd64)
+      echo "amd64"
+      ;;
+    *)
+      echo "$1"
+      ;;
+  esac
+}
+
+host_architecture="$(normalize_architecture "$(docker info --format '{{.Architecture}}')")"
+host_os="$(docker info --format '{{.OSType}}')"
+
 candidate_ref="${IMAGE_REPOSITORY}:${RELEASE_SHA}"
 run_private docker image load --input "$IMAGE_ARCHIVE"
 
@@ -149,6 +166,10 @@ candidate_revision="$(
     "$candidate_ref"
 )"
 candidate_image_id="$(docker image inspect --format '{{.Id}}' "$candidate_ref")"
+candidate_architecture="$(
+  normalize_architecture "$(docker image inspect --format '{{.Architecture}}' "$candidate_ref")"
+)"
+candidate_os="$(docker image inspect --format '{{.Os}}' "$candidate_ref")"
 
 if [[ "$candidate_managed" != "true" || "$candidate_revision" != "$RELEASE_SHA" ]]; then
   echo "The candidate image is missing the expected Nome release labels." >&2
@@ -157,6 +178,12 @@ fi
 
 if [[ ! "$candidate_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo "The candidate image id has an unexpected format." >&2
+  exit 1
+fi
+
+if [[ "$candidate_architecture" != "$host_architecture" || "$candidate_os" != "$host_os" ]]; then
+  echo "The candidate image platform does not match the production Docker host." >&2
+  run_private docker image rm "$candidate_image_id" || true
   exit 1
 fi
 

@@ -3,7 +3,8 @@
 ## Overview
 
 Nome deploys to one production host over SSH from GitHub Actions. The workflow
-builds the selected revision as `nome:<full-release-sha>`, exports the image with
+cross-builds the selected revision for `linux/arm64` as
+`nome:<full-release-sha>`, exports the image with
 `docker image save`, copies it and a `git archive` bootstrap to the SSH target,
 and invokes `scripts/deploy_release.sh`. Production runs one Docker container
 named `nome`; application source and dependencies execute from the image.
@@ -97,7 +98,8 @@ single Telegram `getUpdates` stream and run duplicate schedulers.
    exports the image, and creates a source bootstrap archive.
 3. Both archives are copied to unique `/tmp` paths on the SSH host.
 4. The host deploy script takes the Nome deploy lock, validates private state
-   and Docker access, loads the image, and verifies the same labels again.
+   and Docker access, loads the image, verifies the same labels again, and
+   rejects an OS/architecture mismatch before stopping the active runtime.
 5. The current runtime is stopped only after the candidate image is ready. On
    the first migration this is `nome.service`; later it is the existing managed
    `nome` container.

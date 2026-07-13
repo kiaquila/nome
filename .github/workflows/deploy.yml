@@ -13,6 +13,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PRODUCTION_PLATFORM: linux/arm64
   SSH_CONNECT_TIMEOUT_SECONDS: "30"
   SSH_EXECUTION_TIMEOUT_SECONDS: "1200"
 
@@ -116,6 +117,14 @@ jobs:
               description: "Deploying release to production.",
             });
 
+      - name: Set up QEMU for production architecture
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
       - name: Create release archive
         shell: bash
         run: |
@@ -130,10 +139,12 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
-          docker build \
+          docker buildx build \
             --pull \
+            --platform "$PRODUCTION_PLATFORM" \
             --build-arg "RELEASE_SHA=$RELEASE_SHA" \
             --tag "$IMAGE_REF" \
+            --load \
             .
 
           image_revision="$(

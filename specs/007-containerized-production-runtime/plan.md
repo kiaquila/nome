@@ -9,10 +9,12 @@ virtual environment. The runtime stage copies that environment, runs as a
 non-root default user, binds Uvicorn to the container interface, and defines an
 internal `/healthz` probe.
 
-The deploy workflow builds `nome:<release-sha>` on the GitHub runner and sets
-OCI/Nome labels with the full revision. It exports the image with `docker save`,
-compresses it, and transfers it beside the existing `git archive`. Building on
-the runner avoids adding project-specific BuildKit cache to the shared host.
+The deploy workflow uses QEMU and Buildx to cross-build `linux/arm64`
+`nome:<release-sha>` on the GitHub runner and sets OCI/Nome labels with the full
+revision. It exports the image with `docker save`, compresses it, and transfers
+it beside the existing `git archive`. Building on the runner avoids adding
+project-specific BuildKit cache to the shared host. The host rejects a loaded
+image whose OS/architecture does not match Docker before stopping any runtime.
 
 ## Host Runtime
 
