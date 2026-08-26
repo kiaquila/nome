@@ -22,6 +22,8 @@
     "adapters/",
     "package.json"
   ],
+  "featureMemoryExemptActors": ["dependabot[bot]"],
+  "dependencyManifestPaths": ["pyproject.toml", "uv.lock", ".github/workflows/"],
   "commands": {
     "preflight": "uv run python scripts/preflight.py",
     "check:repo": "uv run python scripts/check_repo_baseline.py",
