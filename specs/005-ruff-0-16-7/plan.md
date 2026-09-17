@@ -28,6 +28,16 @@ application code changes are needed.
 - Incorrect lock metadata could make development environments platform-specific.
   The generated lock entries retain hashes for every supported Ruff artifact.
 
+## Verification
+
+- `uv lock --check`
+- `uv run ruff format --check .`
+- `uv run ruff check .`
+- `uv run mypy src`
+- `uv run pytest`
+- `uv run python scripts/preflight.py`
+- GitHub CI, OSV Scan, PR Guard, and AI Review all succeed on the final head.
+
 ## Rollback
 
 Revert the pull request to restore the Ruff 0.16.6 constraint and lock entries.
