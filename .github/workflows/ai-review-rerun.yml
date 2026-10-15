@@ -6,6 +6,10 @@ on:
   issue_comment:
     types: [created, edited]
 
+concurrency:
+  group: ai-review-rerun-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
 permissions:
   actions: write
   contents: read
@@ -24,10 +28,14 @@ jobs:
         github.event.comment.user.type == 'Bot' &&
         (
           startsWith(github.event.comment.body, 'Codex Review:') ||
+          contains(github.event.comment.body, '<!-- codex-review-receipt:') ||
+          contains(github.event.comment.body, '<!-- codex-pull-request-review-summary -->') ||
+          contains(github.event.comment.body, '<!-- codex-review-state:') ||
           contains(github.event.comment.body, 'AI_REVIEW_OUTCOME:')
         )
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout trusted rerun scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4

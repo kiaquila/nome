@@ -15,7 +15,8 @@ execFileSync("gh", ["variable", "set", "AI_REVIEW_AGENT", "--body", selected], {
 console.log(`Repository variable AI_REVIEW_AGENT set to ${selected}.`);
 
 if (args.pr) {
-  const trigger = selected === "codex" ? "@codex review" : selected === "claude" ? "@claude review once" : "/gemini review";
+  const headSha = execFileSync("gh", ["pr", "view", String(args.pr), "--json", "headRefOid", "--jq", ".headRefOid"], { encoding: "utf8" }).trim();
+  const trigger = selected === "codex" ? `@codex review ${headSha}` : selected === "claude" ? "@claude review once" : "/gemini review";
   execFileSync("gh", ["pr", "comment", String(args.pr), "--body", trigger], { stdio: "inherit" });
   console.log(`Posted trusted review trigger on PR ${args.pr}: ${trigger}`);
 }

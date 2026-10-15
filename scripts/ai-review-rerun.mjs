@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   extractClaudeOutcome,
+  isCodexReviewSignal,
+  reviewEvidenceTimestamp,
   isTrustedReviewLogin
 } from "./ai-review-helpers.mjs";
 import { readConfig } from "./shared.mjs";
@@ -17,17 +19,18 @@ function normalizeAgent(agent) {
 export function shouldRouteAiReviewRerunEvent(event, selectedAgent = "codex", config = {}) {
   const agent = normalizeAgent(selectedAgent);
 
-  if (event?.review) {
+  if (event?.review && (!event.action || event.action === "submitted")) {
     return ["codex", "gemini"].includes(agent) &&
       isTrustedReviewLogin(event.review.user?.login, agent, config);
   }
 
-  if (!event?.issue?.pull_request || !event?.comment) return false;
+  if (!event?.issue?.pull_request || !event?.comment ||
+      (event.action && !["created", "edited"].includes(event.action))) return false;
   const body = String(event.comment.body || "");
   const login = event.comment.user?.login;
 
   if (agent === "codex") {
-    return /^Codex Review:/i.test(body) && isTrustedReviewLogin(login, "codex", config);
+    return isCodexReviewSignal(body) && isTrustedReviewLogin(login, "codex", config);
   }
 
   if (agent === "claude") {
@@ -37,31 +40,23 @@ export function shouldRouteAiReviewRerunEvent(event, selectedAgent = "codex", co
   return false;
 }
 
-export function selectAiReviewRun(runs = [], headSha) {
-  const matchingRuns = runs
-    .filter((run) => run.event === "pull_request" && run.head_sha === headSha)
-    .sort((left, right) => Date.parse(right.created_at || "") - Date.parse(left.created_at || ""));
-
-  const activeRun = matchingRuns.find((run) => activeStatuses.has(run.status));
-  if (activeRun) {
-    return { action: "already_running", run: activeRun };
+export function selectAiReviewRun(runs = [], headSha, evidenceAt = null) {
+  const run = runs.filter((item) => item.event === "pull_request" && item.head_sha === headSha)
+    .sort((left, right) => Date.parse(right.created_at || "") - Date.parse(left.created_at || "") || right.id - left.id)[0];
+  if (!run) return { action: "not_found", run: null };
+  if (activeStatuses.has(run.status)) return { action: "already_running", run };
+  const evidenceTime = Date.parse(evidenceAt || "");
+  const startedTime = Date.parse(run.run_started_at || run.created_at || "");
+  // A later attempt already saw this signal. Never revive an older failed run
+  // behind a successful/newer run or loop on workflow completion events.
+  if (Number.isFinite(evidenceTime) && Number.isFinite(startedTime) && startedTime > evidenceTime) {
+    return { action: "already_evaluated", run };
   }
-
-  const rerunnableRun = matchingRuns.find((run) =>
-    run.status === "completed" && rerunnableConclusions.has(run.conclusion)
-  );
-  if (rerunnableRun) {
-    return { action: "rerun", run: rerunnableRun };
+  if (run.status === "completed" && (rerunnableConclusions.has(run.conclusion) ||
+      (run.conclusion === "success" && Number.isFinite(evidenceTime) && evidenceTime >= startedTime))) {
+    return { action: "rerun", run };
   }
-
-  const successfulRun = matchingRuns.find((run) =>
-    run.status === "completed" && run.conclusion === "success"
-  );
-  if (successfulRun) {
-    return { action: "already_success", run: successfulRun };
-  }
-
-  return { action: "not_found", run: null };
+  return { action: run.conclusion === "success" ? "already_success" : "not_found", run };
 }
 
 async function defaultRequest(token, repository, path, options = {}) {
@@ -96,6 +91,12 @@ export async function rerunAiReviewForPrHead({
   token,
   repository,
   headSha,
+  prNumber = null,
+  evidenceAt = null,
+  waitForActive = false,
+  maxWaitMs = 660000,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now = Date.now,
   request = defaultRequest
 }) {
   if (!token || !repository || !headSha) {
@@ -103,15 +104,27 @@ export async function rerunAiReviewForPrHead({
   }
 
   const [owner, repo] = repository.split("/");
-  const runs = await listPaginated(
-    request,
-    token,
-    repository,
-    `/repos/${owner}/${repo}/actions/workflows/ai-review.yml/runs?event=pull_request&head_sha=${encodeURIComponent(headSha)}`
-  );
-  const selected = selectAiReviewRun(runs, headSha);
+  const started = now();
+  let selected;
+  let delay = 5000;
+  do {
+    if (prNumber) {
+      const pull = await request(token, repository, `/repos/${owner}/${repo}/pulls/${prNumber}`);
+      if (pull.head?.sha !== headSha) return { action: "stale", run: null, message: `PR head moved from ${headSha}; no rerun requested.` };
+    }
+    const runs = await listPaginated(request, token, repository,
+      `/repos/${owner}/${repo}/actions/workflows/ai-review.yml/runs?event=pull_request&head_sha=${encodeURIComponent(headSha)}`);
+    selected = selectAiReviewRun(runs, headSha, evidenceAt);
+    if (selected.action !== "already_running" || !waitForActive || now() - started >= maxWaitMs) break;
+    await sleep(Math.min(delay, maxWaitMs - (now() - started)));
+    delay = Math.min(delay * 2, 30000);
+  } while (true);
 
   if (selected.action === "rerun") {
+    if (prNumber) {
+      const pull = await request(token, repository, `/repos/${owner}/${repo}/pulls/${prNumber}`);
+      if (pull.head?.sha !== headSha) return { action: "stale", run: null, message: `PR head moved from ${headSha}; no rerun requested.` };
+    }
     await request(
       token,
       repository,
@@ -127,6 +140,7 @@ export async function rerunAiReviewForPrHead({
   const runId = selected.run?.id ? ` run ${selected.run.id}` : "";
   const messages = {
     already_running: `AI Review is already running for ${headSha}${runId}.`,
+    already_evaluated: `AI Review already evaluated this signal for ${headSha}${runId}.`,
     already_success: `AI Review already passed for ${headSha}${runId}.`,
     not_found: `No completed AI Review pull_request run found for ${headSha}.`
   };
@@ -138,19 +152,11 @@ export async function rerunAiReviewForPrHead({
 }
 
 async function resolvePullContext({ token, repository, event, request = defaultRequest }) {
-  if (event?.pull_request) {
-    return {
-      prNumber: event.pull_request.number,
-      headSha: event.pull_request.head?.sha
-    };
-  }
-
-  if (!event?.issue?.pull_request || !event?.issue?.number) {
-    throw new Error("Could not resolve pull request from event.");
-  }
+  const number = event?.pull_request?.number || (event?.issue?.pull_request && event.issue.number);
+  if (!number) throw new Error("Could not resolve pull request from event.");
 
   const [owner, repo] = repository.split("/");
-  const pull = await request(token, repository, `/repos/${owner}/${repo}/pulls/${event.issue.number}`);
+  const pull = await request(token, repository, `/repos/${owner}/${repo}/pulls/${number}`);
   return {
     prNumber: pull.number,
     headSha: pull.head?.sha
@@ -179,7 +185,10 @@ async function main() {
   const result = await rerunAiReviewForPrHead({
     token,
     repository,
-    headSha: context.headSha
+    headSha: context.headSha,
+    prNumber: context.prNumber,
+    evidenceAt: event.review?.submitted_at || reviewEvidenceTimestamp(event.comment),
+    waitForActive: true
   });
   console.log(result.message);
 }
