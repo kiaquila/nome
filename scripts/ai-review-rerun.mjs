@@ -23,7 +23,7 @@ export function shouldRouteAiReviewRerunEvent(event, selectedAgent = "codex", co
   const agent = normalizeAgent(selectedAgent);
   if (event?.workflow_run) {
     return event.action === "completed" && event.workflow_run.event === "pull_request" &&
-      event.workflow_run.path === ".github/workflows/ai-review.yml" &&
+      /^\.github\/workflows\/ai-review\.yml(?:@[^\s]+)?$/.test(event.workflow_run.path || "") &&
       event.workflow_run.status === "completed";
   }
 

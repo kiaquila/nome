@@ -84,6 +84,7 @@ Codex reacts with 👀 while any review is running, comments if it has suggestio
   assert.equal(classify(summary({}, absent, rendered)), "pass");
   assert.equal(latestCodexSummaryResult([comment(summary({}, absent, rendered), { created_at: before, updated_at: after })], head, marker), "pass");
   assert.notEqual(classify(summary({}, absent, rendered.replace("**Completed**", "**Running**"))), "pass");
+  assert.notEqual(classify(summary({}, absent, rendered.replace("📝 **Code Review**", "Unresolved findings **Code Review**"))), "pass");
   assert.notEqual(classify(summary({}, absent, rendered.replace(head.slice(0, 7), other.slice(0, 7)))), "pass");
   assert.notEqual(classify(summary({ status: "running", has_any_findings: null, has_unresolved_findings: null }, absent, rendered)), "pass");
   assert.notEqual(classify(summary({ has_any_findings: true }, absent, rendered)), "pass");
@@ -134,7 +135,7 @@ function evidenceApi({ comments = [markerComment, comment(receipt)], reviews = [
   };
   return { request, paths };
 }
-const evaluate = (api) => evaluateAiReviewEvidence({ request: api.request, repository: "o/r", prNumber: 1, headSha: head, agent: "codex" });
+const evaluate = (api, agent = "codex") => evaluateAiReviewEvidence({ request: api.request, repository: "o/r", prNumber: 1, headSha: head, agent });
 test("actual gate evaluator accepts receipts and updated state, requires request and resolved threads", async () => {
   assert.equal(await evaluate(evidenceApi()), "pass");
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary(), { created_at: before, updated_at: after })] })), "pass");
@@ -156,6 +157,19 @@ test("later clean evidence and newer requests never erase any current-head failu
   const negativeReceipt = receipt.replace(legacy, "Codex Review: Found major issues.");
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(negativeReceipt, { updated_at: before }), comment(receipt)] })), "fail");
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(negativeReceipt.replace(head.slice(0, 10), other.slice(0, 10))), comment(receipt)] })), "pass");
+});
+
+test("unresolved threads and GraphQL failures block every selected review agent", async () => {
+  for (const agent of ["claude", "gemini"]) {
+    const requestComment = comment(createAiReviewRequestMarkerBody({ agent, headSha: head, requestId: "alternate", sourceCommentId: "1", sourceCommentCreatedAt: requested, requestedAt: requested }), { user: { login: "github-actions[bot]" }, created_at: requested });
+    const comments = [requestComment];
+    const reviews = [];
+    if (agent === "claude") comments.push(comment(`AI_REVIEW_SHA: ${head}\nAI_REVIEW_OUTCOME: pass`, { user: { login: "claude[bot]" } }));
+    else reviews.push(formal({ user: { login: "gemini-code-assist[bot]" } }));
+    assert.equal(await evaluate(evidenceApi({ comments, reviews }), agent), "pass");
+    assert.equal(await evaluate(evidenceApi({ comments, reviews, threads: [{ isResolved: false }] }), agent), "fail");
+    await assert.rejects(evaluate(evidenceApi({ comments, reviews, graphError: true }), agent), /thread resolution/);
+  }
 });
 
 test("push during evidence retrieval fails the old exact-head gate", async () => {
@@ -185,6 +199,10 @@ const expression = workflow.match(/    if: \|\n([\s\S]*?)    runs-on:/)[1].trim(
 const workflowRoutes = (eventName, event) => Function("github", "startsWith", "contains", `return (${expression});`)({ event_name: eventName, event }, (a, b) => String(a || "").startsWith(b), (a, b) => String(a || "").includes(b));
 test("actual workflow filter and router handle created/edited legacy, receipt and summary", () => {
   assert.match(workflow, /types: \[created, edited\]/);
+  for (const content of [workflow, readFileSync(new URL("../.github/workflows/ai-command-policy.yml", import.meta.url), "utf8")]) {
+    assert.match(content, /group: ai-review-requeue-\$\{\{ github.repository \}\}/);
+    assert.match(content, /cancel-in-progress: false\n      queue: max/);
+  }
   for (const action of ["created", "edited"]) for (const body of [legacy, receipt, summary()]) {
     const event = { action, issue: { number: 1, pull_request: {} }, comment: comment(body) };
     assert.equal(Boolean(workflowRoutes("issue_comment", event)), true);
@@ -238,6 +256,9 @@ test("completion events recover active-window signals once and keep the workflow
   const event = { action: "completed", workflow_run: { id: 1, event: "pull_request", path: ".github/workflows/ai-review.yml", status: "completed", head_sha: head, pull_requests: [{ number: 1 }] } };
   assert.equal(Boolean(workflowRoutes("workflow_run", event)), true);
   assert.equal(shouldRouteAiReviewRerunEvent(event), true);
+  const qualified = { ...event, workflow_run: { ...event.workflow_run, path: ".github/workflows/ai-review.yml@main" } };
+  assert.equal(Boolean(workflowRoutes("workflow_run", qualified)), true);
+  assert.equal(shouldRouteAiReviewRerunEvent(qualified), true);
   assert.equal(shouldRouteAiReviewRerunEvent({ ...event, workflow_run: { ...event.workflow_run, path: ".github/workflows/attacker.yml" } }), false);
   assert.equal(shouldRouteAiReviewRerunEvent({ ...event, workflow_run: { ...event.workflow_run, event: "workflow_dispatch" } }), false);
   const signal = latestAiReviewSignalTimestamp([markerComment, comment(receipt)], [], "codex", head);
@@ -289,7 +310,7 @@ test("runtime gate publishes real success/failure and context retains the event 
     const context = spawnSync(process.execPath, ["--import", preload, "scripts/resolve-pr-context.mjs"], { encoding: "utf8", env: { ...env, TEST_MOVE: "1" } });
     assert.equal(context.status, 0, context.stderr);
     assert.equal(JSON.parse(context.stdout).head_sha, head);
-    const recoveryEvent = { action: "completed", workflow_run: { id: 1, event: "pull_request", path: ".github/workflows/ai-review.yml", status: "completed", head_sha: head, head_branch: "fix/native-review", head_repository: { full_name: "fork/r" }, pull_requests: [] } };
+    const recoveryEvent = { action: "completed", workflow_run: { id: 1, event: "pull_request", path: ".github/workflows/ai-review.yml@main", status: "completed", head_sha: head, head_branch: "fix/native-review", head_repository: { full_name: "fork/r" }, pull_requests: [] } };
     writeFileSync(event, JSON.stringify(recoveryEvent));
     writeFileSync(preload, `const head=${JSON.stringify(head)}, marker=${JSON.stringify(markerComment)}, receipt=${JSON.stringify(comment(receipt))};
       globalThis.fetch=async(url,options)=>{const p=new URL(url).pathname;let value;

@@ -79,11 +79,12 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
         comments.some((comment) => classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
       const freshNative = latestCodexNativeReviewResult(reviews.filter((review) => afterRequest(review.submitted_at)), reviewComments, headSha, config);
       const summary = latestCodexSummaryResult(comments, headSha, marker, config, timeline);
-      if (hasNegativeEvidence || summary === "fail" || await hasUnresolvedThreads(request, owner, repo, prNumber)) result = "fail";
+      if (hasNegativeEvidence || summary === "fail") result = "fail";
       else if (summary === "pending") result = "pending";
       else if (freshNative === "pass" || summary === "pass") result = "pass";
     } else if (reviews.some((review) => afterRequest(review.submitted_at) && isAcceptableNativeReview(review, agent, headSha, config))) result = "pass";
   }
+  if (result === "pass" && await hasUnresolvedThreads(request, owner, repo, prNumber)) result = "fail";
   // A synchronize event can arrive while REST/GraphQL evidence is in flight.
   // Never publish success for the old SHA against a newly resolved PR context.
   if ((await request(pullPath)).head?.sha !== headSha) return "stale";

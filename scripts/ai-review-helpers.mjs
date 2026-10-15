@@ -168,7 +168,8 @@ function reviewStateIsValid(state) {
 }
 
 function withoutCodexFooter(body) {
-  if ((body.match(/<details>/g) || []).length > 1 || containsBlockingSeverity(body, "codex")) return null;
+  if ((body.match(/<details>/g) || []).length > 1 || containsBlockingSeverity(body, "codex") ||
+      /unresolved (?:issues|findings)|found (?:some |major )?(?:issues|findings)/i.test(body)) return null;
   return body.replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "").trim();
 }
 
@@ -183,9 +184,9 @@ function renderedSummaryAgrees(rendered, state, headSha) {
   const expectedReviews = state.security_review.status === null ? ["Code Review"] : ["Code Review", "Security Review"];
   if (lines.length !== expectedReviews.length) return false;
   return lines.every((line, index) => {
-    const row = line.match(/^\| [^|]*\*\*(Code Review|Security Review)\*\* \| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \| `([a-f0-9]{7})` \| (?:Manual request|Automatic review) \|$/);
-    return row && row[1] === expectedReviews[index] && row[2] === row[3] &&
-      Number.isFinite(Date.parse(row[2])) && row[4] === headSha.slice(0, 7);
+    const row = line.match(/^\| (📝|🛡️|🔒) \*\*(Code Review|Security Review)\*\* \| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \| `([a-f0-9]{7})` \| (?:Manual request|Automatic review) \|$/);
+    return row && row[2] === expectedReviews[index] && (row[2] !== "Code Review" || row[1] === "📝") &&
+      row[3] === row[4] && Number.isFinite(Date.parse(row[3])) && row[5] === headSha.slice(0, 7);
   });
 }
 

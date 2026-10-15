@@ -13,7 +13,11 @@ module. Preserve the request marker requirement, check all unresolved threads
 with pagination, retain negative formal evidence across requests, and recheck
 PR head after evidence reads. Resolve pull_request context from the event SHA.
 
-Serialize wakeups per PR. Recover signals through workflow_run completion
+Serialize command and evidence requeues in one repository concurrency group
+with queue: max. This also covers fork completions without a PR number in their
+payload and prevents a newer pending wakeup from evicting an earlier one.
+GitHub documents the queue semantics at
+https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency. Recover signals through workflow_run completion
 events after active attempts finish, then requeue once if the attempt began
 before the signal. Inspect only the newest
 run and its attempt start time. Re-fetch PR head before requeueing. Recover omitted fork PR associations through
