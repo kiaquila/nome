@@ -13,6 +13,7 @@ def main() -> int:
         (["uv", "run", "ruff", "check", "."], "ruff check"),
         (["uv", "run", "mypy", "src/nome"], "mypy"),
         (["uv", "run", "pytest"], "pytest"),
+        (["node", "--test", "tests/ai-review.test.mjs"], "AI review regressions"),
         ([sys.executable, "scripts/check_feature_memory.py"], "feature memory"),
         ([sys.executable, "scripts/check_repo_baseline.py"], "repository baseline"),
         ([sys.executable, "scripts/check_context_budget.py"], "context budget"),

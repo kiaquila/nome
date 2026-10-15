@@ -1,14 +1,7 @@
 #!/usr/bin/env node
 import { appendFileSync } from "node:fs";
-import {
-  createAiReviewRequestMarkerBody,
-  hasHeadUpdateBetweenTimestamps,
-  isAcceptableClaudeComment,
-  isAcceptableCodexSummaryComment,
-  isAcceptableNativeReview,
-  latestAiReviewRequestMarker,
-  latestCodexNativeReviewResult
-} from "./ai-review-helpers.mjs";
+import { createAiReviewRequestMarkerBody } from "./ai-review-helpers.mjs";
+import { evaluateAiReviewEvidence } from "./ai-review-evidence.mjs";
 import { readConfig } from "./shared.mjs";
 
 const token = process.env.GITHUB_TOKEN;
@@ -57,16 +50,6 @@ async function request(path, options = {}) {
   return response.json();
 }
 
-async function listPaginated(path) {
-  const items = [];
-  const separator = path.includes("?") ? "&" : "?";
-  for (let page = 1; ; page += 1) {
-    const batch = await request(`${path}${separator}per_page=100&page=${page}`);
-    items.push(...batch);
-    if (batch.length < 100) return items;
-  }
-}
-
 async function createComment(body) {
   return request(`/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
     method: "POST",
@@ -113,67 +96,15 @@ async function maybePostTriggerComment() {
   }));
 }
 
-function isAfterRequest(value, requestMarker) {
-  const valueTime = Date.parse(value || "");
-  const requestedAt = Date.parse(
-    requestMarker?.sourceCommentCreatedAt ||
-    requestMarker?.requestedAt ||
-    requestMarker?.commentCreatedAt ||
-    ""
-  );
-  return Number.isFinite(valueTime) && Number.isFinite(requestedAt) && valueTime >= requestedAt;
-}
-
 async function fetchEvidence() {
-  if (!await currentHeadMatches()) return "stale";
-
-  const comments = await listPaginated(`/repos/${owner}/${repo}/issues/${prNumber}/comments`);
-  const requestMarker = latestAiReviewRequestMarker(comments, selectedAgent, headSha);
-  if (!requestMarker) return "missing_marker";
-
-  if (selectedAgent === "claude") {
-    return comments.some((comment) =>
-      isAfterRequest(comment.created_at, requestMarker) &&
-      isAcceptableClaudeComment(comment, headSha, config)
-    ) ? "pass" : "pending";
-  }
-
-  const reviews = await listPaginated(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`);
-  if (selectedAgent === "codex") {
-    const reviewComments = await listPaginated(`/repos/${owner}/${repo}/pulls/${prNumber}/comments`);
-    const reviewsAfterRequest = reviews.filter((review) => isAfterRequest(review.submitted_at, requestMarker));
-    const latestCodexResult = latestCodexNativeReviewResult(reviewsAfterRequest, reviewComments, headSha, config);
-    if (latestCodexResult === "pass") return "pass";
-    if (latestCodexResult === "fail") return "fail";
-
-    const timeline = await listPaginated(`/repos/${owner}/${repo}/issues/${prNumber}/timeline`);
-    const triggerAt = requestMarker.sourceCommentCreatedAt || requestMarker.requestedAt || requestMarker.commentCreatedAt;
-    const summaryAccepted = comments.some((comment) => {
-      if (!isAcceptableCodexSummaryComment(comment, headSha, requestMarker, config)) return false;
-      if (hasHeadUpdateBetweenTimestamps(timeline, triggerAt, comment.created_at)) {
-        console.warn(`AI Review gate rejected Codex summary ${comment.id}: head moved between trigger ${triggerAt} and summary ${comment.created_at}.`);
-        return false;
-      }
-      return true;
-    });
-    return summaryAccepted ? "pass" : "pending";
-  }
-
-  if (reviews.some((review) =>
-    isAfterRequest(review.submitted_at, requestMarker) &&
-    isAcceptableNativeReview(review, selectedAgent, headSha, config)
-  )) {
-    return "pass";
-  }
-
-  return "pending";
+  return evaluateAiReviewEvidence({ request, repository, prNumber, headSha, agent: selectedAgent, config });
 }
 
 await maybePostTriggerComment();
 
 if (!await waitForQuietHead()) {
-  console.log(`AI Review gate skipped stale run for ${headSha}; PR head changed during debounce.`);
-  process.exit(0);
+  console.log(`AI Review gate rejected stale run for ${headSha}; PR head changed during debounce.`);
+  process.exit(1);
 }
 
 const started = Date.now();
@@ -196,8 +127,8 @@ while (Date.now() - started <= maxWaitMs) {
 }
 
 if (outcome === "stale") {
-  console.log(`AI Review gate skipped stale run for ${headSha}; PR head moved.`);
-  process.exit(0);
+  console.log(`AI Review gate rejected stale run for ${headSha}; PR head moved.`);
+  process.exit(1);
 }
 
 if (outcome === "pass") {
