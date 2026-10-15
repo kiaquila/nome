@@ -11,6 +11,8 @@ Recognize the observed rocket/thumbs-up and friendly closing variants. A
 completed summary with null findings flags carries no verdict and cannot pass
 alone or supersede a positive explicit receipt. A running review or any
 negative finding still blocks success.
+Keep that neutral completion as a timestamped wakeup signal, distinct from its
+absence as a verdict, so workflow-run recovery can re-evaluate an older receipt.
 
 Extract the gate's actual REST/GraphQL evidence evaluation into an injectable
 module. Preserve the request marker requirement, check all unresolved threads

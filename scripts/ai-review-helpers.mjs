@@ -223,7 +223,8 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
     if (code.has_any_findings !== false || code.has_unresolved_findings !== false) {
       // Native non-review replies can set Completed with null findings flags.
       // This is no verdict: it cannot pass alone or erase a valid receipt.
-      return absent && renderedSummaryAgrees(rendered, state, headSha) ? null : "pending";
+      // Keep a distinct signal so completion recovery retains its edit time.
+      return absent && renderedSummaryAgrees(rendered, state, headSha) ? "neutral" : "pending";
     }
     if (!absent && (security.commit_sha !== headSha || security.status !== "completed" ||
         security.has_any_findings !== false || security.has_unresolved_findings !== false)) return "fail";
@@ -269,7 +270,7 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
     if (result === "pass" && hasHeadUpdateBetweenTimestamps(timeline, triggerAt, reviewEvidenceTimestamp(comment))) result = null;
     return { comment, result };
-  }).filter((entry) => entry.result !== null)
+  }).filter((entry) => entry.result !== null && entry.result !== "neutral")
     .sort((left, right) => Date.parse(reviewEvidenceTimestamp(right.comment)) - Date.parse(reviewEvidenceTimestamp(left.comment)))[0]?.result || null;
 }
 

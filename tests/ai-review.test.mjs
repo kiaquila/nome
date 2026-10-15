@@ -86,7 +86,7 @@ test("observed native summary table agrees with the structured verdict, includin
 Codex reacts with 👀 while any review is running, comments if it has suggestions, and reacts with 👍 once all reviews finish with no findings.
 </details>`;
   assert.equal(classify(summary({}, absent, rendered)), "pass");
-  assert.equal(classify(summary({ has_any_findings: null, has_unresolved_findings: null }, absent, rendered)), null);
+  assert.equal(classify(summary({ has_any_findings: null, has_unresolved_findings: null }, absent, rendered)), "neutral");
   assert.equal(latestCodexSummaryResult([comment(summary({}, absent, rendered), { created_at: before, updated_at: after })], head, marker), "pass");
   assert.notEqual(classify(summary({}, absent, rendered.replace("**Completed**", "**Running**"))), "pass");
   assert.notEqual(classify(summary({}, absent, rendered.replace("📝 **Code Review**", "Unresolved findings **Code Review**"))), "pass");
@@ -278,6 +278,11 @@ test("completion events recover active-window signals once and keep the workflow
   assert.equal(latestAiReviewSignalTimestamp([comment(summary({ commit_sha: other }))], [], "codex", head), null);
   assert.equal(latestAiReviewSignalTimestamp([comment(receipt, { user: { login: "attacker" } })], [], "codex", head), null);
   assert.equal(latestAiReviewSignalTimestamp([markerComment, comment(legacy)], [], "codex", head), after);
+  const neutralCompletion = comment(summary({ has_any_findings: null, has_unresolved_findings: null }), { created_at: before, updated_at: later });
+  const completionSignal = latestAiReviewSignalTimestamp([markerComment, comment(receipt, { updated_at: requested }), neutralCompletion], [], "codex", head);
+  assert.equal(completionSignal, later);
+  assert.equal(selectAiReviewRun([run({ run_started_at: after })], head, completionSignal).action, "rerun");
+  assert.equal(selectAiReviewRun([run({ run_started_at: "2026-10-15T04:00:00Z" })], head, completionSignal).action, "already_evaluated");
 });
 
 test("fork completion with missing associations resolves through exact commit/repository/branch provenance", async () => {
@@ -322,13 +327,14 @@ test("runtime gate publishes real success/failure and context retains the event 
     assert.equal(JSON.parse(context.stdout).head_sha, head);
     const recoveryEvent = { action: "completed", workflow_run: { id: 1, event: "pull_request", path: ".github/workflows/ai-review.yml@main", status: "completed", head_sha: head, head_branch: "fix/native-review", head_repository: { full_name: "fork/r" }, pull_requests: [] } };
     writeFileSync(event, JSON.stringify(recoveryEvent));
-    writeFileSync(preload, `const head=${JSON.stringify(head)}, marker=${JSON.stringify(markerComment)}, receipt=${JSON.stringify(comment(receipt))};
+    const neutralCompletion = comment(summary({ has_any_findings: null, has_unresolved_findings: null }), { created_at: before, updated_at: later });
+    writeFileSync(preload, `const head=${JSON.stringify(head)}, marker=${JSON.stringify(markerComment)}, receipt=${JSON.stringify(comment(receipt, { created_at: requested, updated_at: requested }))}, neutral=${JSON.stringify(neutralCompletion)};
       globalThis.fetch=async(url,options)=>{const p=new URL(url).pathname;let value;
       if(options?.method==='POST'){console.log('RERUN_POST');value=null;}
       else if(p.endsWith('/pulls/1'))value={number:1,head:{sha:head}};
       else if(p.includes('/commits/'))value=[{number:1,state:'open',head:{sha:head,ref:'fix/native-review',repo:{full_name:'fork/r'}},base:{repo:{full_name:'o/r'}}}];
-      else if(p.includes('/actions/workflows/'))value={workflow_runs:[${JSON.stringify(run())}]};
-      else if(p.endsWith('/issues/1/comments'))value=[marker,receipt];else value=[];
+      else if(p.includes('/actions/workflows/'))value={workflow_runs:[${JSON.stringify(run({ run_started_at: after }))}]};
+      else if(p.endsWith('/issues/1/comments'))value=[marker,receipt,neutral];else value=[];
       return {ok:true,status:200,text:async()=>value===null?'':JSON.stringify(value)};};`);
     const recovery = spawnSync(process.execPath, ["--import", preload, "scripts/ai-review-rerun.mjs"], { encoding: "utf8", env });
     assert.equal(recovery.status, 0, recovery.stderr);
