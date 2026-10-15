@@ -147,12 +147,28 @@ export async function rerunAiReviewForPrHead({
   };
 }
 
-async function resolvePullContext({ token, repository, event, request = defaultRequest }) {
-  const number = event?.pull_request?.number || (event?.issue?.pull_request && event.issue.number) ||
+export async function resolvePullContext({ token, repository, event, request = defaultRequest }) {
+  let number = event?.pull_request?.number || (event?.issue?.pull_request && event.issue.number) ||
     event?.workflow_run?.pull_requests?.[0]?.number;
+  const [owner, repo] = repository.split("/");
+  if (!number && event?.workflow_run) {
+    // Fork workflow_run payloads can omit pull_requests. Commit associations
+    // are hints only: prove repository, branch and exact SHA before routing.
+    const run = event.workflow_run;
+    if (!/^[a-f0-9]{40}$/.test(run.head_sha || "") || !run.head_branch || !run.head_repository?.full_name) {
+      throw new Error("Completed workflow is missing exact head provenance.");
+    }
+    const candidates = await listPaginated(request, token, repository,
+      `/repos/${owner}/${repo}/commits/${run.head_sha}/pulls`);
+    const matching = candidates.filter((pull) => pull.state === "open" &&
+      pull.head?.sha === run.head_sha && pull.head?.ref === run.head_branch &&
+      pull.head?.repo?.full_name === run.head_repository.full_name &&
+      pull.base?.repo?.full_name === repository);
+    if (matching.length !== 1) throw new Error("Could not uniquely resolve PR from completed workflow head provenance.");
+    number = matching[0].number;
+  }
   if (!number) throw new Error("Could not resolve pull request from event.");
 
-  const [owner, repo] = repository.split("/");
   const pull = await request(token, repository, `/repos/${owner}/${repo}/pulls/${number}`);
   return {
     prNumber: pull.number,

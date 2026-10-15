@@ -228,6 +228,9 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
     return "pass";
   }
 
+  const reviewedCommits = [...body.matchAll(/^\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/gm)];
+  if (reviewedCommits.length === 1 && ![headSha, headSha.slice(0, 10)].includes(reviewedCommits[0][1])) return null;
+  if (reviewedCommits.length > 1) return "fail";
   const receipt = body.startsWith("<!-- codex-review-receipt:");
   let text = body;
   if (receipt) {
@@ -239,6 +242,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
   text = withoutCodexFooter(text);
   if (text === null) return "fail";
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (reviewedCommits.length && /(?:here are[\s\S]*suggestions|found (?:some |major |any )?(?:issues|findings)|changes requested|unresolved findings)/i.test(text)) return "fail";
   if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|Keep it up!))*$/i.test(lines[0] || "")) return "pending";
   const commitLine = lines[1]?.match(/^\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/);
   if (lines.length > (commitLine ? 2 : 1)) return "fail";

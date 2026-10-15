@@ -16,7 +16,9 @@ PR head after evidence reads. Resolve pull_request context from the event SHA.
 Serialize wakeups per PR. Recover signals through workflow_run completion
 events after active attempts finish, then requeue once if the attempt began
 before the signal. Inspect only the newest
-run and its attempt start time. Re-fetch PR head before requeueing. The switch
+run and its attempt start time. Re-fetch PR head before requeueing. Recover omitted fork PR associations through
+the commit-to-pulls API, requiring an unambiguous open PR with matching head
+repository, branch, full SHA and base repository. The switch
 helper requests the full head SHA; command policy rejects an obsolete explicit SHA.
 
 ## Verification

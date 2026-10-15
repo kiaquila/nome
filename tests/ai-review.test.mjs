@@ -10,7 +10,7 @@ import {
   createAiReviewRequestMarkerBody
 } from "../scripts/ai-review-helpers.mjs";
 import { evaluateAiReviewEvidence } from "../scripts/ai-review-evidence.mjs";
-import { shouldRouteAiReviewRerunEvent, selectAiReviewRun, rerunAiReviewForPrHead, latestAiReviewSignalTimestamp } from "../scripts/ai-review-rerun.mjs";
+import { shouldRouteAiReviewRerunEvent, selectAiReviewRun, rerunAiReviewForPrHead, latestAiReviewSignalTimestamp, resolvePullContext } from "../scripts/ai-review-rerun.mjs";
 
 const head = "2667f79cd7676ff331730cabf661d38dbbcddb0d";
 const other = "a".repeat(40);
@@ -153,6 +153,9 @@ test("later clean evidence and newer requests never erase any current-head failu
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary({ has_any_findings: true }), { created_at: before, updated_at: before }), comment(summary(), { updated_at: later })] })), "fail");
   assert.equal(await evaluate(evidenceApi({ reviews: [formal({ state: "CHANGES_REQUESTED", commit_id: other, submitted_at: before })] })), "pass");
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary({ commit_sha: other, has_any_findings: true })), comment(receipt)] })), "pass");
+  const negativeReceipt = receipt.replace(legacy, "Codex Review: Found major issues.");
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(negativeReceipt, { updated_at: before }), comment(receipt)] })), "fail");
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(negativeReceipt.replace(head.slice(0, 10), other.slice(0, 10))), comment(receipt)] })), "pass");
 });
 
 test("push during evidence retrieval fails the old exact-head gate", async () => {
@@ -246,6 +249,31 @@ test("completion events recover active-window signals once and keep the workflow
   assert.equal(latestAiReviewSignalTimestamp([markerComment, comment(legacy)], [], "codex", head), after);
 });
 
+test("fork completion with missing associations resolves through exact commit/repository/branch provenance", async () => {
+  const event = { action: "completed", workflow_run: { head_sha: head, head_branch: "fix/native-review", head_repository: { full_name: "fork/r" }, pull_requests: [] } };
+  const candidate = { number: 1, state: "open", head: { sha: head, ref: "fix/native-review", repo: { full_name: "fork/r" } }, base: { repo: { full_name: "o/r" } } };
+  let candidates = [candidate];
+  const paths = [];
+  const request = async (_token, _repository, path) => {
+    paths.push(path);
+    if (path.includes("/commits/")) return candidates;
+    assert.equal(path, "/repos/o/r/pulls/1");
+    return { number: 1, head: { sha: head } };
+  };
+  const args = { token: "test", repository: "o/r", event, request };
+  assert.deepEqual(await resolvePullContext(args), { prNumber: 1, headSha: head });
+  assert.match(paths[0], new RegExp(`/commits/${head}/pulls`));
+  for (const headPatch of [{ sha: other }, { ref: "other-branch" }, { repo: { full_name: "attacker/r" } }]) {
+    candidates = [{ ...candidate, head: { ...candidate.head, ...headPatch } }];
+    await assert.rejects(resolvePullContext(args), /uniquely resolve/);
+  }
+  candidates = [candidate, { ...candidate, number: 2 }];
+  await assert.rejects(resolvePullContext(args), /uniquely resolve/);
+  candidates = [{ ...candidate, state: "closed" }];
+  await assert.rejects(resolvePullContext(args), /uniquely resolve/);
+  await assert.rejects(resolvePullContext({ ...args, event: { workflow_run: { head_sha: head, pull_requests: [] } } }), /provenance/);
+});
+
 test("runtime gate publishes real success/failure and context retains the event SHA", () => {
   const dir = mkdtempSync(join(tmpdir(), "nome-review-test-"));
   try {
@@ -261,12 +289,13 @@ test("runtime gate publishes real success/failure and context retains the event 
     const context = spawnSync(process.execPath, ["--import", preload, "scripts/resolve-pr-context.mjs"], { encoding: "utf8", env: { ...env, TEST_MOVE: "1" } });
     assert.equal(context.status, 0, context.stderr);
     assert.equal(JSON.parse(context.stdout).head_sha, head);
-    const recoveryEvent = { action: "completed", workflow_run: { id: 1, event: "pull_request", path: ".github/workflows/ai-review.yml", status: "completed", head_sha: head, pull_requests: [{ number: 1 }] } };
+    const recoveryEvent = { action: "completed", workflow_run: { id: 1, event: "pull_request", path: ".github/workflows/ai-review.yml", status: "completed", head_sha: head, head_branch: "fix/native-review", head_repository: { full_name: "fork/r" }, pull_requests: [] } };
     writeFileSync(event, JSON.stringify(recoveryEvent));
     writeFileSync(preload, `const head=${JSON.stringify(head)}, marker=${JSON.stringify(markerComment)}, receipt=${JSON.stringify(comment(receipt))};
       globalThis.fetch=async(url,options)=>{const p=new URL(url).pathname;let value;
       if(options?.method==='POST'){console.log('RERUN_POST');value=null;}
       else if(p.endsWith('/pulls/1'))value={number:1,head:{sha:head}};
+      else if(p.includes('/commits/'))value=[{number:1,state:'open',head:{sha:head,ref:'fix/native-review',repo:{full_name:'fork/r'}},base:{repo:{full_name:'o/r'}}}];
       else if(p.includes('/actions/workflows/'))value={workflow_runs:[${JSON.stringify(run())}]};
       else if(p.endsWith('/issues/1/comments'))value=[marker,receipt];else value=[];
       return {ok:true,status:200,text:async()=>value===null?'':JSON.stringify(value)};};`);
