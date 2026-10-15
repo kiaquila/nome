@@ -16,11 +16,15 @@ PR head after evidence reads. Resolve pull_request context from the event SHA.
 Serialize command and evidence requeues in one repository concurrency group
 with queue: max. This also covers fork completions without a PR number in their
 payload and prevents a newer pending wakeup from evicting an earlier one.
-GitHub documents the queue semantics at
-https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency. Recover signals through workflow_run completion
-events after active attempts finish, then requeue once if the attempt began
-before the signal. Inspect only the newest
-run and its attempt start time. Re-fetch PR head before requeueing. Recover omitted fork PR associations through
+GitHub added larger queues on [2026-05-07](https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/).
+The current [job concurrency syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idconcurrency)
+supports up to 100 pending jobs with queue: max and cancel-in-progress: false.
+GitHub accepted this PR's configuration in
+[AI Review Rerun run 38817982655](https://github.com/kiaquila/nome/actions/runs/38817982655).
+Recover signals through workflow_run completion events after active attempts
+finish, then requeue once if the attempt began before the signal. Inspect only
+the newest run and its attempt start time. Re-fetch PR head before requeueing.
+Recover omitted fork PR associations through
 the commit-to-pulls API, requiring an unambiguous open PR with matching head
 repository, branch, full SHA and base repository. The switch
 helper requests the full head SHA; command policy rejects an obsolete explicit SHA.

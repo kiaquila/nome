@@ -44,6 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
+      # Supported since 2026-05-07; retain every pending review signal.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idconcurrency
       group: ai-review-requeue-${{ github.repository }}
       cancel-in-progress: false
       queue: max
