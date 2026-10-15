@@ -216,15 +216,19 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
     if (code.commit_sha !== headSha) return null;
     if (containsBlockingSeverity(body, "codex") || code.has_any_findings === true ||
         code.has_unresolved_findings === true) return "fail";
-    if (code.status !== "completed" || code.has_any_findings !== false ||
-        code.has_unresolved_findings !== false) return "pending";
     const security = state.security_review;
     const absent = Object.values(security).every((value) => value === null);
+    const rendered = body.slice(match[0].length).trim();
+    if (code.status !== "completed") return "pending";
+    if (code.has_any_findings !== false || code.has_unresolved_findings !== false) {
+      // Native non-review replies can set Completed with null findings flags.
+      // This is no verdict: it cannot pass alone or erase a valid receipt.
+      return absent && renderedSummaryAgrees(rendered, state, headSha) ? null : "pending";
+    }
     if (!absent && (security.commit_sha !== headSha || security.status !== "completed" ||
         security.has_any_findings !== false || security.has_unresolved_findings !== false)) return "fail";
     // Additional native rendered content may contain findings; require its
     // explicit verdict to agree, rather than trusting a heading or Completed.
-    const rendered = body.slice(match[0].length).trim();
     if (!renderedSummaryAgrees(rendered, state, headSha)) return "pending";
     return "pass";
   }
@@ -244,7 +248,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
   if (text === null) return "fail";
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (reviewedCommits.length && /(?:here are[\s\S]*suggestions|found (?:some |major |any )?(?:issues|findings)|changes requested|unresolved findings)/i.test(text)) return "fail";
-  if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|Keep it up!))*$/i.test(lines[0] || "")) return "pending";
+  if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|:\+1:|👍|Keep it up!|Already looking forward to the next diff\.))*$/i.test(lines[0] || "")) return "pending";
   const commitLine = lines[1]?.match(/^\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/);
   if (lines.length > (commitLine ? 2 : 1)) return "fail";
   if (commitLine) return [headSha, headSha.slice(0, 10)].includes(commitLine[1]) ? "pass" : null;

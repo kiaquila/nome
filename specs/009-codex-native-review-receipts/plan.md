@@ -7,6 +7,10 @@ observed native formats in the shared helper. Recognize markers in the rerun
 workflow and router without treating a wakeup signal as positive evidence.
 Use updated_at for mutable comments and a complete current SHA for structured
 state. Allow only the official About Codex informational footer on receipts.
+Recognize the observed rocket/thumbs-up and friendly closing variants. A
+completed summary with null findings flags carries no verdict and cannot pass
+alone or supersede a positive explicit receipt. A running review or any
+negative finding still blocks success.
 
 Extract the gate's actual REST/GraphQL evidence evaluation into an injectable
 module. Preserve the request marker requirement, check all unresolved threads

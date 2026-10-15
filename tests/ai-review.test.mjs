@@ -32,6 +32,10 @@ test("real receipt, legacy, curly apostrophe and official footer pass", () => {
   assert.equal(classify(receipt), "pass");
   assert.equal(classify(legacy), "pass");
   assert.equal(classify(receipt.replace("Didn't", "Didn’t")), "pass");
+  for (const closing of [":+1:", "👍", "Already looking forward to the next diff."]) {
+    assert.equal(classify(receipt.replace(":rocket:", closing)), "pass", closing);
+    assert.notEqual(classify(receipt.replace(":rocket:", `${closing} P2 remains`)), "pass");
+  }
   assert.equal(classify(receipt.replace(":rocket:", "Keep it up!") + '\n\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n<br/>\nReviews are triggered when you comment "@codex review".\n</details>'), "pass");
   assert.equal(isAcceptableCodexSummaryComment(comment(legacy), head), false);
 });
@@ -82,6 +86,7 @@ test("observed native summary table agrees with the structured verdict, includin
 Codex reacts with 👀 while any review is running, comments if it has suggestions, and reacts with 👍 once all reviews finish with no findings.
 </details>`;
   assert.equal(classify(summary({}, absent, rendered)), "pass");
+  assert.equal(classify(summary({ has_any_findings: null, has_unresolved_findings: null }, absent, rendered)), null);
   assert.equal(latestCodexSummaryResult([comment(summary({}, absent, rendered), { created_at: before, updated_at: after })], head, marker), "pass");
   assert.notEqual(classify(summary({}, absent, rendered.replace("**Completed**", "**Running**"))), "pass");
   assert.notEqual(classify(summary({}, absent, rendered.replace("📝 **Code Review**", "Unresolved findings **Code Review**"))), "pass");
@@ -138,6 +143,11 @@ function evidenceApi({ comments = [markerComment, comment(receipt)], reviews = [
 const evaluate = (api, agent = "codex") => evaluateAiReviewEvidence({ request: api.request, repository: "o/r", prNumber: 1, headSha: head, agent });
 test("actual gate evaluator accepts receipts and updated state, requires request and resolved threads", async () => {
   assert.equal(await evaluate(evidenceApi()), "pass");
+  const nativeReceipt = comment(receipt.replace(":rocket:", "Already looking forward to the next diff."));
+  const indeterminateCompletion = comment(summary({ has_any_findings: null, has_unresolved_findings: null }), { updated_at: later });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, nativeReceipt, indeterminateCompletion] })), "pass");
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, indeterminateCompletion] })), "pending");
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, nativeReceipt, comment(summary({ status: "running", has_any_findings: null, has_unresolved_findings: null }), { updated_at: later })] })), "pending");
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary(), { created_at: before, updated_at: after })] })), "pass");
   assert.equal(await evaluate(evidenceApi({ comments: [comment(receipt)] })), "missing_marker");
   assert.equal(await evaluate(evidenceApi({ threads: [{ isResolved: false }] })), "fail");
