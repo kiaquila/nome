@@ -6,6 +6,7 @@ import {
   extractMarkerSha,
   classifyCodexSummaryComment,
   latestAiReviewRequestMarker,
+  isAiReviewRequestMarkerComment,
   isCodexReviewSignal,
   reviewEvidenceTimestamp,
   isTrustedReviewLogin
@@ -213,7 +214,7 @@ async function main() {
   }
 
   const context = await resolvePullContext({ token, repository, event });
-  let evidenceAt = event.review?.submitted_at || reviewEvidenceTimestamp(event.comment);
+  let evidenceAt;
   if (event.workflow_run) {
     if (event.workflow_run.head_sha !== context.headSha) {
       console.log("AI Review recovery skipped: completed run belongs to an old PR head.");
@@ -225,6 +226,22 @@ async function main() {
     evidenceAt = latestAiReviewSignalTimestamp(comments, reviews, selectedAgent, context.headSha, config);
     if (!evidenceAt) {
       console.log("AI Review recovery skipped: no current-head native review signal.");
+      return;
+    }
+  } else {
+    const comments = event.comment ? [event.comment] : [];
+    if (event.comment && selectedAgent === "codex") {
+      // SHA-less legacy signals need the trusted request marker. Do not mix
+      // other review evidence into this event's head/timestamp validation.
+      const allComments = await listPaginated(defaultRequest, token, repository,
+        `/repos/${repository}/issues/${context.prNumber}/comments`);
+      comments.push(...allComments.filter((comment) =>
+        isAiReviewRequestMarkerComment(comment, selectedAgent, context.headSha)));
+    }
+    evidenceAt = latestAiReviewSignalTimestamp(comments, event.review ? [event.review] : [],
+      selectedAgent, context.headSha, config);
+    if (!evidenceAt) {
+      console.log("AI Review rerun skipped: direct signal does not belong to the current PR head.");
       return;
     }
   }

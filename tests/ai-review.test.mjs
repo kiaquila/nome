@@ -340,6 +340,23 @@ test("runtime gate publishes real success/failure and context retains the event 
     assert.equal(recovery.status, 0, recovery.stderr);
     assert.equal((recovery.stdout.match(/RERUN_POST/g) || []).length, 1);
     assert.match(recovery.stdout, /Requested AI Review rerun/);
+    const direct = (nextEvent) => {
+      writeFileSync(event, JSON.stringify(nextEvent));
+      return spawnSync(process.execPath, ["--import", preload, "scripts/ai-review-rerun.mjs"], { encoding: "utf8", env });
+    };
+    for (const nextEvent of [
+      { action: "submitted", pull_request: { number: 1 }, review: formal({ commit_id: other, submitted_at: later }) },
+      { action: "submitted", pull_request: { number: 1 }, review: formal({ commit_id: undefined, submitted_at: later }) },
+      { action: "edited", issue: { number: 1, pull_request: {} }, comment: comment(summary({ commit_sha: other }), { updated_at: later }) },
+      { action: "created", issue: { number: 1, pull_request: {} }, comment: comment(receipt.replace(head.slice(0, 10), other.slice(0, 10)), { updated_at: later }) }
+    ]) {
+      const stale = direct(nextEvent);
+      assert.equal(stale.status, 0, stale.stderr);
+      assert.doesNotMatch(stale.stdout, /RERUN_POST/);
+    }
+    const current = direct({ action: "edited", issue: { number: 1, pull_request: {} }, comment: comment(receipt, { updated_at: later }) });
+    assert.equal(current.status, 0, current.stderr);
+    assert.match(current.stdout, /RERUN_POST/);
     for (const name of ["ai-review.yml", "ai-review-rerun.yml"]) assert.match(readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8"), /ref: \$\{\{ github.event.repository.default_branch \}\}/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

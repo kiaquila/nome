@@ -30,6 +30,9 @@ GitHub accepted this PR's configuration in
 Recover signals through workflow_run completion events after active attempts
 finish, then requeue once if the attempt began before the signal. Inspect only
 the newest run and its attempt start time. Re-fetch PR head before requeueing.
+Validate each direct event against that live head before selecting a run;
+its timestamp alone cannot authorize requeueing a newer commit. Use the shared
+classifier, with only trusted request markers added for SHA-less legacy text.
 Recover omitted fork PR associations through
 the commit-to-pulls API, requiring an unambiguous open PR with matching head
 repository, branch, full SHA and base repository. The switch
