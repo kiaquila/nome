@@ -160,11 +160,33 @@ function exactKeys(value, keys) {
 
 function reviewStateIsValid(state) {
   return exactKeys(state, ["commit_sha", "has_any_findings", "has_unresolved_findings", "status"]) &&
-    (state.commit_sha === null || /^[a-f0-9]{40}$/.test(state.commit_sha)) &&
+    (state.commit_sha === null || (typeof state.commit_sha === "string" && /^[a-f0-9]{40}$/.test(state.commit_sha))) &&
     [null, true, false].includes(state.has_any_findings) &&
     [null, true, false].includes(state.has_unresolved_findings) &&
-    [null, "queued", "in_progress", "completed"].includes(state.status) &&
+    [null, "queued", "running", "in_progress", "completed"].includes(state.status) &&
     !(state.has_any_findings === false && state.has_unresolved_findings === true);
+}
+
+function withoutCodexFooter(body) {
+  if ((body.match(/<details>/g) || []).length > 1 || containsBlockingSeverity(body, "codex")) return null;
+  return body.replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "").trim();
+}
+
+function renderedSummaryAgrees(rendered, state, headSha) {
+  const text = withoutCodexFooter(rendered);
+  if (text === null) return false;
+  if (!text || /^(?:Code review\s*)?(?:Completed\s*)?(?:No (?:major issues|findings)(?: found)?[.!]?|Codex Review: Didn['’]t find any major issues[.!]?)$/i.test(text)) return true;
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const introduction = "This comment shows the latest Codex review activity on this pull request.";
+  if (lines.shift() !== introduction || lines.shift() !== "| Review | Status | Commit | Review trigger |" ||
+      lines.shift() !== "| --- | --- | --- | --- |") return false;
+  const expectedReviews = state.security_review.status === null ? ["Code Review"] : ["Code Review", "Security Review"];
+  if (lines.length !== expectedReviews.length) return false;
+  return lines.every((line, index) => {
+    const row = line.match(/^\| [^|]*\*\*(Code Review|Security Review)\*\* \| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \| `([a-f0-9]{7})` \| (?:Manual request|Automatic review) \|$/);
+    return row && row[1] === expectedReviews[index] && row[2] === row[3] &&
+      Number.isFinite(Date.parse(row[2])) && row[4] === headSha.slice(0, 7);
+  });
 }
 
 // Parse a closed schema. Unknown versions, duplicate JSON keys/markers and prose
@@ -202,7 +224,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
     // Additional native rendered content may contain findings; require its
     // explicit verdict to agree, rather than trusting a heading or Completed.
     const rendered = body.slice(match[0].length).trim();
-    if (rendered && !/^(?:Code review\s*)?(?:Completed\s*)?(?:No (?:major issues|findings)(?: found)?[.!]?|Codex Review: Didn['’]t find any major issues[.!]?)$/i.test(rendered)) return "pending";
+    if (!renderedSummaryAgrees(rendered, state, headSha)) return "pending";
     return "pass";
   }
 
@@ -212,11 +234,10 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
     if (!text.startsWith(receiptMarker)) return "fail";
     text = text.slice(receiptMarker.length).trim();
   }
-  if (/<!-- codex-/.test(text) || containsBlockingSeverity(body, "codex") ||
-      (text.match(/<details>/g) || []).length > 1) return "fail";
+  if (/<!-- codex-/.test(text)) return "fail";
   // Ignore only the official informational footer, never arbitrary details.
-  text = text.replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "").trim();
-  if (containsBlockingSeverity(text, "codex")) return "fail";
+  text = withoutCodexFooter(text);
+  if (text === null) return "fail";
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|Keep it up!))*$/i.test(lines[0] || "")) return "pending";
   const commitLine = lines[1]?.match(/^\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/);

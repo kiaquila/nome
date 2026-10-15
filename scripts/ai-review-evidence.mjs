@@ -1,5 +1,7 @@
 import {
   isAcceptableClaudeComment,
+  classifyCodexNativeReview,
+  classifyCodexSummaryComment,
   isAcceptableNativeReview,
   latestAiReviewRequestMarker,
   latestCodexNativeReviewResult,
@@ -72,10 +74,12 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
       const timeline = await listReviewPages(request, `${prefix}/issues/${prNumber}/timeline`);
       // Do not filter formal findings by the latest request marker. A new
       // request never resolves a finding or dismisses a current-head failure.
-      const native = latestCodexNativeReviewResult(reviews, reviewComments, headSha, config);
+      const hasNegativeEvidence = reviews.some((review) =>
+        classifyCodexNativeReview(review, reviewComments, headSha, config) === "fail") ||
+        comments.some((comment) => classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
       const freshNative = latestCodexNativeReviewResult(reviews.filter((review) => afterRequest(review.submitted_at)), reviewComments, headSha, config);
       const summary = latestCodexSummaryResult(comments, headSha, marker, config, timeline);
-      if (native === "fail" || summary === "fail" || await hasUnresolvedThreads(request, owner, repo, prNumber)) result = "fail";
+      if (hasNegativeEvidence || summary === "fail" || await hasUnresolvedThreads(request, owner, repo, prNumber)) result = "fail";
       else if (summary === "pending") result = "pending";
       else if (freshNative === "pass" || summary === "pass") result = "pass";
     } else if (reviews.some((review) => afterRequest(review.submitted_at) && isAcceptableNativeReview(review, agent, headSha, config))) result = "pass";

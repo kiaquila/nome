@@ -7,7 +7,13 @@ marker and updates an existing structured summary. The inherited classifier
 and workflow/router filters ignore both signals. A completed gate stays red,
 even after the trusted native reviewer has reviewed the current commit.
 
-## Acceptance criteria
+## Goal
+
+Restore native Codex evidence recognition across the complete CI gate and
+wakeup chain while preserving trusted authors, exact-head binding, severity
+policy and unresolved findings protection.
+
+## Acceptance Criteria
 
 - Legacy comments and native formal reviews remain supported. New receipts
   require the trusted Codex login, an explicit positive verdict and a matching

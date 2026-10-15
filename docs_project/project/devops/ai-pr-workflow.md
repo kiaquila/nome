@@ -31,9 +31,9 @@ carry a completed typed verdict for the full head SHA. The marker, a reaction
 or a Completed heading alone is insufficient. New requests do not resolve
 findings, and every unresolved review thread blocks the Codex gate.
 
-The rerun workflow accepts created and edited native evidence. It waits for an
-active gate to finish and requeues the latest exact-head run when the evidence
-is newer than that attempt. It also reevaluates a successful run after a changed
+The rerun workflow accepts created and edited native evidence. A completion event recovers
+evidence arriving at the end of an active gate and requeues the latest exact-head
+run when the evidence is newer than that attempt. It also reevaluates a successful run after a changed
 verdict. New pushes invalidate old evaluations. Both workflows continue running
 trusted default-branch scripts; see specs/009-codex-native-review-receipts/plan.md
 for the initial rollout constraint.

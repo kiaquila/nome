@@ -13,8 +13,9 @@ module. Preserve the request marker requirement, check all unresolved threads
 with pagination, retain negative formal evidence across requests, and recheck
 PR head after evidence reads. Resolve pull_request context from the event SHA.
 
-Serialize wakeups per PR. Wait with bounded backoff for an active attempt to
-finish, then requeue once if it began before the signal. Inspect only the newest
+Serialize wakeups per PR. Recover signals through workflow_run completion
+events after active attempts finish, then requeue once if the attempt began
+before the signal. Inspect only the newest
 run and its attempt start time. Re-fetch PR head before requeueing. The switch
 helper requests the full head SHA; command policy rejects an obsolete explicit SHA.
 

@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   extractClaudeOutcome,
+  extractMarkerSha,
+  classifyCodexSummaryComment,
+  latestAiReviewRequestMarker,
   isCodexReviewSignal,
   reviewEvidenceTimestamp,
   isTrustedReviewLogin
@@ -18,6 +21,11 @@ function normalizeAgent(agent) {
 
 export function shouldRouteAiReviewRerunEvent(event, selectedAgent = "codex", config = {}) {
   const agent = normalizeAgent(selectedAgent);
+  if (event?.workflow_run) {
+    return event.action === "completed" && event.workflow_run.event === "pull_request" &&
+      event.workflow_run.path === ".github/workflows/ai-review.yml" &&
+      event.workflow_run.status === "completed";
+  }
 
   if (event?.review && (!event.action || event.action === "submitted")) {
     return ["codex", "gemini"].includes(agent) &&
@@ -93,10 +101,6 @@ export async function rerunAiReviewForPrHead({
   headSha,
   prNumber = null,
   evidenceAt = null,
-  waitForActive = false,
-  maxWaitMs = 660000,
-  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  now = Date.now,
   request = defaultRequest
 }) {
   if (!token || !repository || !headSha) {
@@ -104,21 +108,13 @@ export async function rerunAiReviewForPrHead({
   }
 
   const [owner, repo] = repository.split("/");
-  const started = now();
-  let selected;
-  let delay = 5000;
-  do {
-    if (prNumber) {
-      const pull = await request(token, repository, `/repos/${owner}/${repo}/pulls/${prNumber}`);
-      if (pull.head?.sha !== headSha) return { action: "stale", run: null, message: `PR head moved from ${headSha}; no rerun requested.` };
-    }
-    const runs = await listPaginated(request, token, repository,
-      `/repos/${owner}/${repo}/actions/workflows/ai-review.yml/runs?event=pull_request&head_sha=${encodeURIComponent(headSha)}`);
-    selected = selectAiReviewRun(runs, headSha, evidenceAt);
-    if (selected.action !== "already_running" || !waitForActive || now() - started >= maxWaitMs) break;
-    await sleep(Math.min(delay, maxWaitMs - (now() - started)));
-    delay = Math.min(delay * 2, 30000);
-  } while (true);
+  if (prNumber) {
+    const pull = await request(token, repository, `/repos/${owner}/${repo}/pulls/${prNumber}`);
+    if (pull.head?.sha !== headSha) return { action: "stale", run: null, message: `PR head moved from ${headSha}; no rerun requested.` };
+  }
+  const runs = await listPaginated(request, token, repository,
+    `/repos/${owner}/${repo}/actions/workflows/ai-review.yml/runs?event=pull_request&head_sha=${encodeURIComponent(headSha)}`);
+  const selected = selectAiReviewRun(runs, headSha, evidenceAt);
 
   if (selected.action === "rerun") {
     if (prNumber) {
@@ -152,7 +148,8 @@ export async function rerunAiReviewForPrHead({
 }
 
 async function resolvePullContext({ token, repository, event, request = defaultRequest }) {
-  const number = event?.pull_request?.number || (event?.issue?.pull_request && event.issue.number);
+  const number = event?.pull_request?.number || (event?.issue?.pull_request && event.issue.number) ||
+    event?.workflow_run?.pull_requests?.[0]?.number;
   if (!number) throw new Error("Could not resolve pull request from event.");
 
   const [owner, repo] = repository.split("/");
@@ -161,6 +158,24 @@ async function resolvePullContext({ token, repository, event, request = defaultR
     prNumber: pull.number,
     headSha: pull.head?.sha
   };
+}
+
+export function latestAiReviewSignalTimestamp(comments, reviews, agent, headSha, config = {}) {
+  const timestamps = [];
+  const marker = latestAiReviewRequestMarker(comments, agent, headSha);
+  for (const comment of comments) {
+    if (!isTrustedReviewLogin(comment.user?.login, agent, config)) continue;
+    if (agent === "codex" && classifyCodexSummaryComment(comment, headSha, marker, config) !== null) {
+      timestamps.push(reviewEvidenceTimestamp(comment));
+    } else if (agent === "claude" && extractClaudeOutcome(comment.body) && extractMarkerSha(comment.body) === headSha) {
+      timestamps.push(reviewEvidenceTimestamp(comment));
+    }
+  }
+  for (const review of reviews) {
+    if (review.commit_id === headSha && isTrustedReviewLogin(review.user?.login, agent, config)) timestamps.push(review.submitted_at);
+  }
+  return timestamps.filter((timestamp) => Number.isFinite(Date.parse(timestamp || "")))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0] || null;
 }
 
 async function main() {
@@ -182,13 +197,27 @@ async function main() {
   }
 
   const context = await resolvePullContext({ token, repository, event });
+  let evidenceAt = event.review?.submitted_at || reviewEvidenceTimestamp(event.comment);
+  if (event.workflow_run) {
+    if (event.workflow_run.head_sha !== context.headSha) {
+      console.log("AI Review recovery skipped: completed run belongs to an old PR head.");
+      return;
+    }
+    const prefix = `/repos/${repository}`;
+    const comments = await listPaginated(defaultRequest, token, repository, `${prefix}/issues/${context.prNumber}/comments`);
+    const reviews = await listPaginated(defaultRequest, token, repository, `${prefix}/pulls/${context.prNumber}/reviews`);
+    evidenceAt = latestAiReviewSignalTimestamp(comments, reviews, selectedAgent, context.headSha, config);
+    if (!evidenceAt) {
+      console.log("AI Review recovery skipped: no current-head native review signal.");
+      return;
+    }
+  }
   const result = await rerunAiReviewForPrHead({
     token,
     repository,
     headSha: context.headSha,
     prNumber: context.prNumber,
-    evidenceAt: event.review?.submitted_at || reviewEvidenceTimestamp(event.comment),
-    waitForActive: true
+    evidenceAt
   });
   console.log(result.message);
 }
