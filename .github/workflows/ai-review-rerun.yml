@@ -1,6 +1,9 @@
 name: AI Review Rerun
 
 on:
+  workflow_run:
+    workflows: [AI Review]
+    types: [completed]
   pull_request_review:
     types: [submitted]
   issue_comment:
@@ -16,6 +19,14 @@ jobs:
     name: ai-review-rerun
     if: |
       (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'pull_request' &&
+        (
+          github.event.workflow_run.path == '.github/workflows/ai-review.yml' ||
+          startsWith(github.event.workflow_run.path, '.github/workflows/ai-review.yml@')
+        )
+      ) ||
+      (
         github.event_name == 'pull_request_review' &&
         github.event.review.user.type == 'Bot'
       ) ||
@@ -24,10 +35,20 @@ jobs:
         github.event.comment.user.type == 'Bot' &&
         (
           startsWith(github.event.comment.body, 'Codex Review:') ||
+          contains(github.event.comment.body, '<!-- codex-review-receipt:') ||
+          contains(github.event.comment.body, '<!-- codex-pull-request-review-summary -->') ||
+          contains(github.event.comment.body, '<!-- codex-review-state:') ||
           contains(github.event.comment.body, 'AI_REVIEW_OUTCOME:')
         )
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      # Supported since 2026-05-07; retain every pending review signal.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idconcurrency
+      group: ai-review-requeue-${{ github.repository }}
+      cancel-in-progress: false
+      queue: max
     steps:
       - name: Checkout trusted rerun scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4

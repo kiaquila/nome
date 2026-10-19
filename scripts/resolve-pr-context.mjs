@@ -43,10 +43,14 @@ if (!prNumber) {
   process.exit(1);
 }
 
+const event = process.env.GITHUB_EVENT_PATH
+  ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
+const eventHead = process.env.AI_REVIEW_EVENT_HEAD_SHA ||
+  (process.env.GITHUB_EVENT_NAME === "pull_request" ? event.pull_request?.head?.sha : null);
 const pull = await request(`/repos/${owner}/${repo}/pulls/${prNumber}`);
 const output = {
   pr_number: String(pull.number),
-  head_sha: pull.head.sha,
+  head_sha: eventHead || pull.head.sha,
   base_ref: pull.base.ref,
   head_ref: pull.head.ref
 };

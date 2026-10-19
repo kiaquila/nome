@@ -86,6 +86,11 @@ if (lines.length) {
 if (isReview) {
   const pull = await request(`/repos/${owner}/${repo}/pulls/${prNumber}`);
   const headSha = pull.head?.sha;
+  const requestedSha = body.match(/@codex review\s+([a-f0-9]{40})\b/i)?.[1];
+  if (requestedSha && requestedSha !== headSha) {
+    console.error("AI review request rejected: explicit commit no longer matches PR head.");
+    process.exit(1);
+  }
   const sourceCommentId = String(event.comment.id);
   const requestedAt = event.comment.created_at || new Date().toISOString();
   const requestId = `${sourceCommentId}-${String(headSha).slice(0, 12)}`;
@@ -103,7 +108,8 @@ if (isReview) {
     const rerunResult = await rerunAiReviewForPrHead({
       token,
       repository,
-      headSha
+      headSha,
+      prNumber
     });
     console.log(rerunResult.message);
   } catch (error) {
