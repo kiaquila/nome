@@ -2,12 +2,13 @@
 
 ## Design
 
-Keep trusted default-branch checkout in both review workflows. Parse the two
+Keep trusted default-branch checkout in all write-capable jobs. Parse the two
 observed native formats in the shared helper. Recognize markers in the rerun
 workflow and router without treating a wakeup signal as positive evidence.
 Use updated_at for mutable comments and a complete current SHA for structured
 state. Allow only the official About Codex informational footer on receipts.
-Recognize the observed rocket/thumbs-up and friendly closing variants. A
+Recognize the observed rocket/thumbs-up and friendly closing variants, including
+the exact `Breezy!` suffix in native receipt 6204061212 on this PR. A
 completed summary with null findings flags carries no verdict and cannot pass
 alone or supersede a positive explicit receipt. A running review or any
 negative finding still blocks success.
@@ -45,11 +46,31 @@ runtime exit codes, exact-head context and rerun state transitions. Run these
 through the required Python preflight as well as directly. Check GitHub rules,
 native review author/SHA, check suites and review thread resolution before merge.
 
-## Rollout constraint
+## Safe initial rollout
 
-The PR's AI Review deliberately still executes main's trusted scripts. First
-try genuine native formal review evidence that the existing gate understands.
-If native review supplies only the new receipt/summary and no trusted rollout
-path exists, keep the reviewed PR open and report the exact failed gate. Do not
-weaken checks, publish synthetic success, use admin merge or execute unreviewed
-PR scripts with elevated credentials to bootstrap the change.
+The original trusted parser rejected genuine final-head native evidence in
+AI Review run 38820671131, attempt 2. Native review supplied receipts and an
+updated summary, without a current-head formal review the old gate understands.
+
+Use the read-only source-promotion design merged in unicorn-hub PR #27.
+Validation receives only contents/pull-requests/issues read permission and
+never persists checkout credentials. Administrative comment-mode requests run
+in a separate job, with default-branch scripts and the default workflow ref;
+request failure or a non-default write dispatch fails validation. The gate
+entry point itself rejects comment mode and performs no administrative writes.
+
+A maintainer may set AI_REVIEW_GATE_PIN to
+<default-full-sha>:<independently-reviewed-gate-full-sha>. Both values must be
+full lowercase SHAs. The first must equal the actual trusted checkout; a changed
+default branch invalidates the pin. Only read-only validation consumes it.
+Inspect the candidate, its imports/configuration, preflight results and genuine
+native review directly before promotion; its own evaluation cannot establish
+trust. Obtain native review of the final workflow/head too. The actual PR
+workflow must validate live current-head evidence and all unresolved threads.
+Keep all checks green for 120 seconds, merge normally with an expected-head
+guard, remove the temporary pin and verify default-branch operation. Never
+fabricate success, weaken checks, rewrite review evidence or use admin merge.
+
+Regression tests execute the actual workflow shell with valid, malformed,
+stale-base and injection pins, and every request-job outcome. Runtime coverage
+also verifies that validation rejects administrative trigger mode.

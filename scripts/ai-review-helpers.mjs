@@ -249,7 +249,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
   if (text === null) return "fail";
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (reviewedCommits.length && /(?:here are[\s\S]*suggestions|found (?:some |major |any )?(?:issues|findings)|changes requested|unresolved findings)/i.test(text)) return "fail";
-  if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|:\+1:|👍|Keep it up!|Already looking forward to the next diff\.))*$/i.test(lines[0] || "")) return "pending";
+  if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|:\+1:|👍|Keep it up!|Breezy!|Already looking forward to the next diff\.))*$/i.test(lines[0] || "")) return "pending";
   const commitLine = lines[1]?.match(/^\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/);
   if (lines.length > (commitLine ? 2 : 1)) return "fail";
   if (commitLine) return [headSha, headSha.slice(0, 10)].includes(commitLine[1]) ? "pass" : null;

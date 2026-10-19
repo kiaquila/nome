@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { appendFileSync } from "node:fs";
-import { createAiReviewRequestMarkerBody } from "./ai-review-helpers.mjs";
 import { evaluateAiReviewEvidence } from "./ai-review-evidence.mjs";
 import { readConfig } from "./shared.mjs";
 
@@ -26,8 +25,8 @@ if (!new Set(["codex", "claude", "gemini"]).has(selectedAgent)) {
   process.exit(1);
 }
 
-if (!new Set(["skip", "comment"]).has(triggerMode)) {
-  console.error(`Unsupported AI_REVIEW_TRIGGER_MODE value: ${triggerMode}`);
+if (triggerMode !== "skip") {
+  console.error("AI Review validation is read-only; administrative triggers belong to the default-branch request job.");
   process.exit(1);
 }
 
@@ -50,14 +49,6 @@ async function request(path, options = {}) {
   return response.json();
 }
 
-async function createComment(body) {
-  return request(`/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ body })
-  });
-}
-
 async function fetchPull() {
   return request(`/repos/${owner}/${repo}/pulls/${prNumber}`);
 }
@@ -73,34 +64,9 @@ async function waitForQuietHead() {
   return currentHeadMatches();
 }
 
-async function maybePostTriggerComment() {
-  if (triggerMode !== "comment") return;
-  const triggers = {
-    codex: "@codex review",
-    claude: "@claude review once",
-    gemini: "/gemini review"
-  };
-  const triggerComment = await createComment([
-    triggers[selectedAgent],
-    "",
-    "_Administrative trigger posted by the AI Review workflow. Prefer a trusted human-authored trigger if the native backend ignores bot comments._"
-  ].join("\n"));
-  const requestedAt = triggerComment?.created_at || new Date().toISOString();
-  await createComment(createAiReviewRequestMarkerBody({
-    agent: selectedAgent,
-    headSha,
-    requestId: `workflow-${triggerComment?.id || Date.now()}-${headSha.slice(0, 12)}`,
-    sourceCommentId: String(triggerComment?.id || ""),
-    sourceCommentCreatedAt: triggerComment?.created_at,
-    requestedAt
-  }));
-}
-
 async function fetchEvidence() {
   return evaluateAiReviewEvidence({ request, repository, prNumber, headSha, agent: selectedAgent, config });
 }
-
-await maybePostTriggerComment();
 
 if (!await waitForQuietHead()) {
   console.log(`AI Review gate rejected stale run for ${headSha}; PR head changed during debounce.`);
@@ -164,14 +130,6 @@ const failureComment = [
 
 if (process.env.GITHUB_STEP_SUMMARY) {
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${failureComment}\n`);
-}
-
-if (outcome === "fail") {
-  try {
-    await createComment(failureComment);
-  } catch (error) {
-    console.warn(`Could not post AI Review gate failure comment: ${error.message}`);
-  }
 }
 
 const outcomeDetail = outcome === "missing_marker"

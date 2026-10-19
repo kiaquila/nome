@@ -34,6 +34,19 @@ findings, and every unresolved review thread blocks the Codex gate.
 The rerun workflow accepts created and edited native evidence. A completion event recovers
 evidence arriving at the end of an active gate and requeues the latest exact-head
 run when the evidence is newer than that attempt. It also reevaluates a successful run after a changed
-verdict. New pushes invalidate old evaluations. Both workflows continue running
-trusted default-branch scripts; see specs/009-codex-native-review-receipts/plan.md
-for the initial rollout constraint.
+verdict. New pushes invalidate old evaluations. Write-capable jobs execute trusted
+default-branch scripts. Validation has only read permissions, never persists
+checkout credentials and cannot post administrative requests or failure comments.
+Comment-mode requests run separately and require the default workflow ref.
+
+For an initial parser upgrade, a maintainer can promote an independently reviewed
+immutable snapshot through the Actions variable
+`AI_REVIEW_GATE_PIN=<default-full-sha>:<reviewed-gate-full-sha>`. Inspect that exact
+snapshot, imports and configuration, run preflight, and verify genuine native
+review directly before setting the pin. The default SHA must match the trusted
+checkout; a changed base fails closed. Only read-only validation uses the pin.
+Obtain final-head native review and run the actual PR workflow, verifying live
+evidence and all unresolved threads. Keep CI fully green for 120 seconds before
+normal merge, then remove the pin and verify default-branch validation. A manual
+dispatch alone does not replace the real PR check. See
+specs/009-codex-native-review-receipts/plan.md for the rollout evidence and policy.

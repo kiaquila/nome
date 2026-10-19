@@ -30,9 +30,12 @@ policy and unresolved findings protection.
 - The latest current-head run is reevaluated for new evidence after completion
   and after an active run finishes. Duplicate signals do not restart an attempt
   that already evaluated them; stale heads and old failed runs stay untouched.
-- Regression tests run in the Python preflight and CI. Rollout retains trusted
-  default-branch scripts and requires genuine native review and all configured
-  checks; no fabricated status, protection bypass or privileged PR-code execution.
+- Regression tests run in the Python preflight and CI. Administrative writes
+  retain trusted default-branch scripts. Initial read-only validation may use an
+  explicitly promoted, independently reviewed immutable gate snapshot, bound to
+  the current default SHA. Genuine final-head native review and every configured
+  check remain required; no fabricated status, protection bypass or privileged
+  PR-code execution.
 
 ## Negative scenarios
 

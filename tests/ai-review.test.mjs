@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFileSync } from "node:child_process";
 import {
   classifyCodexSummaryComment, isAcceptableCodexSummaryComment,
   latestCodexSummaryResult, classifyCodexNativeReview,
@@ -32,7 +32,7 @@ test("real receipt, legacy, curly apostrophe and official footer pass", () => {
   assert.equal(classify(receipt), "pass");
   assert.equal(classify(legacy), "pass");
   assert.equal(classify(receipt.replace("Didn't", "Didn’t")), "pass");
-  for (const closing of [":+1:", "👍", "Already looking forward to the next diff."]) {
+  for (const closing of [":+1:", "👍", "Breezy!", "Already looking forward to the next diff."]) {
     assert.equal(classify(receipt.replace(":rocket:", closing)), "pass", closing);
     assert.notEqual(classify(receipt.replace(":rocket:", `${closing} P2 remains`)), "pass");
   }
@@ -321,6 +321,9 @@ test("runtime gate publishes real success/failure and context retains the event 
     const gate = (extra = {}) => spawnSync(process.execPath, ["--import", preload, "scripts/ai-review-gate.mjs"], { encoding: "utf8", env: { ...env, ...extra } });
     assert.equal(gate().status, 0);
     assert.match(gate().stdout, /gate passed/);
+    const writableTrigger = gate({ AI_REVIEW_TRIGGER_MODE: "comment" });
+    assert.equal(writableTrigger.status, 1);
+    assert.match(writableTrigger.stderr, /validation is read-only/);
     assert.equal(gate({ TEST_MOVE: "1" }).status, 1);
     const context = spawnSync(process.execPath, ["--import", preload, "scripts/resolve-pr-context.mjs"], { encoding: "utf8", env: { ...env, TEST_MOVE: "1" } });
     assert.equal(context.status, 0, context.stderr);
@@ -359,4 +362,79 @@ test("runtime gate publishes real success/failure and context retains the event 
     assert.match(current.stdout, /RERUN_POST/);
     for (const name of ["ai-review.yml", "ai-review-rerun.yml"]) assert.match(readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8"), /ref: \$\{\{ github.event.repository.default_branch \}\}/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+const gateWorkflow = readFileSync(".github/workflows/ai-review.yml", "utf8");
+const selectSource = gateWorkflow.match(/- name: Select trusted gate source[\s\S]*?        run: \|\n([\s\S]*?)\n      - name:/)[1]
+  .replace(/^          /gm, "");
+const reviewedSha = "0123456789abcdef0123456789abcdef01234567";
+
+function withRepository(check) {
+  const dir = mkdtempSync(join(tmpdir(), "review-gate-source-"));
+  try {
+    const git = (args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    git(["init", "--initial-branch=main"]);
+    git(["-c", "user.name=Synthetic Reviewer", "-c", "user.email=reviewer@example.invalid", "commit", "--allow-empty", "-m", "Synthetic trusted base"]);
+    const defaultSha = git(["rev-parse", "HEAD"]);
+    const run = (pin) => {
+      const output = join(dir, "outputs");
+      rmSync(output, { force: true });
+      const result = spawnSync("bash", ["-c", selectSource], {
+        cwd: dir, encoding: "utf8",
+        env: { ...process.env, REVIEW_GATE_PIN: pin, GITHUB_OUTPUT: output }
+      });
+      return { ...result, output: result.status === 0 ? readFileSync(output, "utf8") : "" };
+    };
+    check({ run, defaultSha });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("review gate defaults to an immutable checkout of the trusted default branch", () => {
+  withRepository(({ run, defaultSha }) => {
+    const result = run("");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.output, `gate_sha=${defaultSha}\n`);
+  });
+});
+
+test("repository-owned gate promotion is full-SHA pinned and bound to the trusted base", () => {
+  withRepository(({ run, defaultSha }) => {
+    const result = run(`${defaultSha}:${reviewedSha}`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.output, `gate_sha=${reviewedSha}\n`);
+    for (const pin of [reviewedSha, `main:${reviewedSha}`, `${defaultSha}:refs/pull/1/head`,
+      `${defaultSha}:${reviewedSha.slice(0, 10)}`, `${defaultSha}:${reviewedSha}:extra`,
+      `${"f".repeat(40)}:${reviewedSha}`, `${defaultSha}:$(touch unsafe-source)`]) {
+      const rejected = run(pin);
+      assert.notEqual(rejected.status, 0, pin);
+      assert.equal(rejected.output, "", pin);
+    }
+  });
+});
+
+test("only the isolated default-branch request job can write; validation fails after request failure", () => {
+  const [requestJob, validationJob] = gateWorkflow.split("jobs:\n")[1].split("\n  ai-review:\n");
+  assert.match(gateWorkflow, /permissions:\n  contents: read\n  pull-requests: read\n  issues: read/);
+  assert.match(requestJob, /permissions:\n      contents: read\n      pull-requests: write\n      issues: write/);
+  assert.match(requestJob, /ref: \$\{\{ github.event.repository.default_branch \}\}/);
+  assert.match(requestJob, /github.ref == format\('refs\/heads\/\{0\}', github.event.repository.default_branch\)/);
+  assert.doesNotMatch(requestJob, /AI_REVIEW_GATE_PIN|steps.source|pull_request.head|secrets\./);
+  assert.doesNotMatch(validationJob, /: write|continue-on-error|secrets\./);
+  assert.match(validationJob, /needs: request-review\n    if: \|\n      always\(\)/);
+  assert.match(validationJob, /AI_REVIEW_TRIGGER_MODE: skip/);
+  assert.match(validationJob, /AI_REVIEW_HEAD_SHA: \$\{\{ github.event.pull_request.head.sha \|\| steps.pr.outputs.head_sha \}\}/);
+  assert.match(validationJob, /REVIEW_GATE_PIN: \$\{\{ vars.AI_REVIEW_GATE_PIN \}\}/);
+  assert.equal((gateWorkflow.match(/persist-credentials: false/g) || []).length, 3);
+  const verifyRequest = validationJob.match(/- name: Verify request job[\s\S]*?        run: \|\n([\s\S]*?)\n      - name:/)[1].replace(/^          /gm, "");
+  for (const result of ["success", "skipped", "failure", "cancelled", ""]) {
+    for (const mode of ["skip", "comment"]) {
+      const execution = spawnSync("bash", ["-c", verifyRequest], {
+        env: { ...process.env, REQUEST_RESULT: result, EVENT_NAME: "workflow_dispatch", REQUESTED_TRIGGER_MODE: mode }
+      });
+      assert.equal(execution.status === 0, result === "success" || (result === "skipped" && mode === "skip"), `${result}/${mode}`);
+    }
+  }
 });
