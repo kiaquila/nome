@@ -552,3 +552,20 @@ test('direct structured-state failures remain vetoes across requests', async () 
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, finding, comment(receipt)] })), 'fail');
   }
 });
+
+
+test('historical foreign-head direct state does not veto current approval', async () => {
+  const direct = summary({ commit_sha: other, has_any_findings: true }).replace('<!-- codex-pull-request-review-summary -->\n', '');
+  const finding = comment(direct, { created_at: before, updated_at: before });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, finding, comment(receipt)] })), 'pass');
+});
+
+
+test('strictly newer formal approval supersedes pending prose conservatively', async () => {
+  const unknown = comment(receipt.replace(legacy, "Codex Review: Didn't find any major issues. Needs work."), { created_at: after, updated_at: after });
+  const oldCode = comment(summary(), { created_at: before, updated_at: later });
+  for (const extras of [[], [oldCode]]) {
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, ...extras, unknown], reviews: [formal({ submitted_at: later, state: 'APPROVED' })] })), 'pass');
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, ...extras, unknown], reviews: [formal({ submitted_at: after, state: 'APPROVED' })] })), 'pending');
+  }
+});

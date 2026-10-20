@@ -143,7 +143,7 @@ function codeCompletionTime(comment) {
   return Number.isFinite(value) && Number.isFinite(edited) && value <= edited + 999 ? match[1] : null;
 }
 
-function verdictTime(comment, result) {
+export function verdictTime(comment, result) {
   return result === "pass" && String(comment?.body || "").trim().startsWith(summaryMarker)
     ? codeCompletionTime(comment) : result === "pass" ? comment?.created_at : comment?.updated_at || comment?.created_at;
 }

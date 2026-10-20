@@ -1,5 +1,8 @@
 import {
   isAcceptableClaudeComment,
+  verdictTime,
+  isCodexReviewSignal,
+  isTrustedReviewLogin,
   classifyCodexNativeReview,
   classifyCodexSummaryComment,
   isAcceptableNativeReview,
@@ -76,12 +79,20 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
       // request never resolves a finding or dismisses a current-head failure.
       const hasNegativeEvidence = reviews.some((review) =>
         classifyCodexNativeReview(review, reviewComments, headSha, config) === "fail") ||
-        comments.some((comment) => (/^<!-- (?:codex-pull-request-review-summary -->|codex-review-state:)/.test(String(comment.body || "").trim()) ||
+        comments.some((comment) => (historicalStructuredFailureTargetsHead(comment, headSha) ||
           (afterRequest(comment.updated_at) || afterRequest(comment.created_at))) &&
           classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
       const freshNative = latestCodexNativeReviewResult(reviews.filter((review) => afterRequest(review.submitted_at)), reviewComments, headSha, config);
       const summary = latestCodexSummaryResult(comments, headSha, marker, config, timeline);
+      const bucket = (value) => Math.floor(Date.parse(value || "") / 1000);
+      const latestComment = Math.max(...comments.filter((comment) =>
+        isTrustedReviewLogin(comment.user?.login, "codex", config) && isCodexReviewSignal(comment.body)
+      ).map((comment) => bucket(verdictTime(comment, classifyCodexSummaryComment(comment, headSha, marker, config)))).filter(Number.isFinite));
+      const latestNative = Math.max(...reviews.filter((review) => afterRequest(review.submitted_at) &&
+        classifyCodexNativeReview(review, reviewComments, headSha, config) === "pass"
+      ).map((review) => bucket(review.submitted_at)).filter(Number.isFinite));
       if (hasNegativeEvidence || summary === "fail") result = "fail";
+      else if (freshNative === "pass" && latestNative > latestComment) result = "pass";
       else if (summary === "pending") result = "pending";
       else if (freshNative === "pass" || summary === "pass") result = "pass";
     } else if (reviews.some((review) => afterRequest(review.submitted_at) && isAcceptableNativeReview(review, agent, headSha, config))) result = "pass";
@@ -91,4 +102,16 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
   // Never publish success for the old SHA against a newly resolved PR context.
   if ((await request(pullPath)).head?.sha !== headSha) return "stale";
   return result;
+}
+
+
+function historicalStructuredFailureTargetsHead(comment, headSha) {
+  const body = String(comment?.body || "").trim();
+  if (body.startsWith("<!-- codex-pull-request-review-summary -->")) return true;
+  const match = body.match(/^<!-- codex-review-state:v1 (\{[^\n]+\}) -->/);
+  if (!match) return false;
+  try {
+    const state = JSON.parse(match[1]);
+    return state?.code_review?.commit_sha === headSha || state?.security_review?.commit_sha === headSha;
+  } catch { return false; }
 }
