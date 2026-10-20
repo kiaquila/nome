@@ -1,6 +1,7 @@
 import {
   isAcceptableClaudeComment,
   verdictTime,
+  hasCurrentHeadTypedFinding,
   isCodexReviewSignal,
   isTrustedReviewLogin,
   classifyCodexNativeReview,
@@ -79,7 +80,7 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
       // request never resolves a finding or dismisses a current-head failure.
       const hasNegativeEvidence = reviews.some((review) =>
         classifyCodexNativeReview(review, reviewComments, headSha, config) === "fail") ||
-        comments.some((comment) => (historicalStructuredFailureTargetsHead(comment, headSha) ||
+        comments.some((comment) => (hasCurrentHeadTypedFinding(comment, headSha) ||
           (afterRequest(comment.updated_at) || afterRequest(comment.created_at))) &&
           classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
       const freshNative = latestCodexNativeReviewResult(reviews.filter((review) => afterRequest(review.submitted_at)), reviewComments, headSha, config);
@@ -102,15 +103,4 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
   // Never publish success for the old SHA against a newly resolved PR context.
   if ((await request(pullPath)).head?.sha !== headSha) return "stale";
   return result;
-}
-
-
-function historicalStructuredFailureTargetsHead(comment, headSha) {
-  const body = String(comment?.body || "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
-  const match = body.match(/^<!-- codex-review-state:v1 (\{[^\n]+\}) -->/);
-  if (!match) return false;
-  try {
-    const state = JSON.parse(match[1]);
-    return state?.code_review?.commit_sha === headSha || state?.security_review?.commit_sha === headSha;
-  } catch { return false; }
 }

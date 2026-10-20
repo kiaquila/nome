@@ -366,3 +366,21 @@ export function isAcceptableClaudeComment(comment, headSha, config = {}) {
   if (extractMarkerSha(body) !== headSha) return false;
   return extractClaudeOutcome(body) === "pass";
 }
+
+
+export function hasCurrentHeadTypedFinding(comment, headSha) {
+  const body = String(comment?.body || "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
+  if ((body.match(/<!-- codex-/g) || []).length !== 1) return false;
+  const match = body.match(/^<!-- codex-review-state:v1 (\{[^\n]+\}) -->/);
+  if (!match || match[1].includes("\\")) return false;
+  for (const [key, count] of [["code_review", 1], ["security_review", 1],
+    ["commit_sha", 2], ["has_any_findings", 2], ["has_unresolved_findings", 2], ["status", 2]]) {
+    if ((match[1].match(new RegExp(`"${key}"\\s*:`, "g")) || []).length !== count) return false;
+  }
+  let state;
+  try { state = JSON.parse(match[1]); } catch { return false; }
+  if (!exactKeys(state, ["code_review", "security_review"]) ||
+      !reviewStateIsValid(state.code_review) || !reviewStateIsValid(state.security_review)) return false;
+  return [state.code_review, state.security_review].some((review) => review.commit_sha === headSha &&
+    (review.has_any_findings === true || review.has_unresolved_findings === true));
+}

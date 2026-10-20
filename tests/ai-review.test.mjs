@@ -577,3 +577,24 @@ test('historical malformed or foreign outer state does not veto fresh proof', as
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(receipt)] })), 'pass');
   }
 });
+
+
+test('historical schema-invalid typed payload cannot veto fresh approval permanently', async () => {
+  const missing = summary().replace('"has_any_findings":false,', '');
+  const duplicate = summary().replace('"has_any_findings":false', '"has_any_findings":true,"has_any_findings":false');
+  for (const outer of [missing, duplicate]) for (const direct of [outer, outer.replace('<!-- codex-pull-request-review-summary -->\n', '')]) {
+    const old = comment(direct, { created_at: before, updated_at: before });
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(receipt)] })), 'pass');
+  }
+});
+
+
+test('duplicate state markers are malformed rather than permanent historical findings', async () => {
+  const valid = summary({ has_any_findings: true });
+  const payload = valid.split('\n')[1];
+  for (const body of [valid + '\n' + payload, valid.replace('<!-- codex-pull-request-review-summary -->\n', '') + '\n' + payload]) {
+    const old = comment(body, { created_at: before, updated_at: before });
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(receipt)] })), 'pass');
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(receipt), comment(body, { created_at: later, updated_at: later })] })), 'pass');
+  }
+});
