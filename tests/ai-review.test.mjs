@@ -452,7 +452,7 @@ test("unseen closings require an authoritative later structured verdict", () => 
     assert.notEqual(classifyReceipt(unknown, head, request), 'pass', closing);
     const clean = make(summary(), '2026-10-15T03:00:00Z');
     assert.equal(selectSummary([unknown, clean], head, request), 'pass');
-    assert.equal(selectSummary([clean, { ...unknown, updated_at: '2026-10-15T04:00:00Z' }], head, request), 'pass');
+    assert.notEqual(selectSummary([clean, { ...unknown, updated_at: '2026-10-15T04:00:00Z' }], head, request), 'pass');
   }
   const clean = make(summary(), '2026-10-15T03:00:00Z');
   for (const invalid of [
@@ -465,12 +465,12 @@ test("unseen closings require an authoritative later structured verdict", () => 
 });
 
 
-test("actual gate corroborates either receipt order and pending wins equal-time clean state", async () => {
+test("actual gate requires newer structured authority and pending wins equal time", async () => {
   const unknown = comment(receipt.replace(':rocket:', 'Swish!'));
   const clean = comment(summary());
-  for (const pair of [[unknown, clean], [clean, unknown]]) {
-    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, ...pair] })), 'pass');
-  }
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, unknown, { ...clean, updated_at: later }] })), 'pass');
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, clean, { ...unknown, updated_at: later }] })), 'pending');
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, unknown, clean] })), 'pending');
   for (const pair of [[clean, comment(summary({ status: 'running' }))], [comment(summary({ status: 'running' })), clean]]) {
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, ...pair] })), 'pending');
   }

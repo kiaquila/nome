@@ -133,17 +133,6 @@ export function extractCodexPriority(body) {
 }
 
 
-// This identifies a presentation receipt, never an independent clean verdict.
-// Only an exact-head typed summary in the same request can corroborate it.
-function isCodexPresentationReceipt(body, headSha) {
-  const text = body.replace(/^<!-- codex-review-receipt:v1 -->\s*/, "")
-    .replace(/\s*<details>\s*<summary>[^<]*About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "").trim();
-  const match = text.match(/^Codex Review: Did(?: not|n['’]t) find any major issues\.([^\r\n]*)\r?\n\s*\r?\n?\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/i);
-  return Boolean(match && [headSha, headSha.slice(0, 10)].includes(match[2]) &&
-    !/[<>`{}\[\]|*=]/.test(match[1]) &&
-    !/\b(?:P[0-3]|codex|review\w*|commit\w*|sha\w*|AI_REVIEW\w*|status|state|verdict|finding\w*|issue\w*|unresolved|pending|queued|running|failed|changes? requested|false|true|null)\b/i.test(match[1]));
-}
-
 const receiptMarker = "<!-- codex-review-receipt:v1 -->";
 const summaryMarker = "<!-- codex-pull-request-review-summary -->";
 
@@ -261,7 +250,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
   if (text === null) return "fail";
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (reviewedCommits.length && /(?:here are[\s\S]*suggestions|found (?:some |major |any )?(?:issues|findings)|changes requested|unresolved findings)/i.test(text)) return "fail";
-  if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|:\+1:|👍|Keep it up!|Breezy!|Already looking forward to the next diff\.))*$/i.test(lines[0] || "")) return isCodexPresentationReceipt(body, headSha) ? "presentation" : "pending";
+  if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|:\+1:|👍|Keep it up!|Breezy!|Already looking forward to the next diff\.))*$/i.test(lines[0] || "")) return "pending";
   const commitLine = lines[1]?.match(/^\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/);
   if (lines.length > (commitLine ? 2 : 1)) return "fail";
   if (commitLine) return [headSha, headSha.slice(0, 10)].includes(commitLine[1]) ? "pass" : null;
@@ -276,21 +265,14 @@ export function isAcceptableCodexSummaryComment(comment, headSha, requestMarker 
 }
 
 export function latestCodexSummaryResult(comments, headSha, requestMarker, config = {}, timeline = []) {
-  const proof = comments.some((comment) => String(comment.body || "").trim().startsWith(summaryMarker) &&
-    classifyCodexSummaryComment(comment, headSha, requestMarker, config) === "pass" && isAfterRequest(comment, requestMarker) &&
-    !hasHeadUpdateBetweenTimestamps(timeline, requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt, reviewEvidenceTimestamp(comment)));
   return comments.map((comment) => {
     let result = classifyCodexSummaryComment(comment, headSha, requestMarker, config);
     const unrecognized = result === null;
-    const presentation = result === "presentation";
     if (result === "pass" && !isAfterRequest(comment, requestMarker)) result = null;
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
     if (result === "pass" && hasHeadUpdateBetweenTimestamps(timeline, triggerAt, reviewEvidenceTimestamp(comment))) result = null;
-    if (result === "presentation") result = proof && isAfterRequest(comment, requestMarker) ? null : "pending";
     if (unrecognized && isTrustedReviewLogin(comment?.user?.login, "codex", config) &&
         isCodexReviewSignal(comment?.body) && isAfterRequest(comment, requestMarker)) result = "pending";
-    // Corroborated presentation is ignored, never promoted into a verdict.
-    if (proof && presentation && isAfterRequest(comment, requestMarker)) result = null;
     return { comment, result };
   }).filter((entry) => entry.result !== null && entry.result !== "neutral")
     .sort((left, right) => Date.parse(reviewEvidenceTimestamp(right.comment)) - Date.parse(reviewEvidenceTimestamp(left.comment)) ||

@@ -9,3 +9,7 @@
 
 ## Decision and dead end
 Arbitrary suffix acceptance via a word exclusion list cannot prove a closing harmless. Discarded that experimental approach before publication. Structured state provides authority; presentation is never an additional verdict.
+
+## CI security follow-up
+
+OSV found GHSA-6q48-6c7w-9gw2 in certifi 2026.6.17. Updated only certifi lock artifacts to the scanner-confirmed fixed version 2026.10.19; no unrelated dependency changes. Re-run full preflight and obtain fresh exact-head native review.
