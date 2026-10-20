@@ -535,3 +535,11 @@ test('fresh approval supersedes old request prose failure and stale positive edi
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, fresh] })), 'pass');
   }
 });
+
+
+test('normalized historical typed findings retain their veto', async () => {
+  for (const prefix of ['  \n', '\ufeff']) {
+    const finding = comment(prefix + summary({ has_any_findings: true }), { created_at: before, updated_at: before });
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, finding, comment(receipt)] })), 'fail');
+  }
+});
