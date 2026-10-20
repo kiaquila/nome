@@ -4,8 +4,6 @@ import { fileURLToPath } from "node:url";
 import {
   extractClaudeOutcome,
   extractMarkerSha,
-  classifyCodexSummaryComment,
-  latestAiReviewRequestMarker,
   isAiReviewRequestMarkerComment,
   isCodexReviewSignal,
   reviewEvidenceTimestamp,
@@ -179,10 +177,9 @@ export async function resolvePullContext({ token, repository, event, request = d
 
 export function latestAiReviewSignalTimestamp(comments, reviews, agent, headSha, config = {}) {
   const timestamps = [];
-  const marker = latestAiReviewRequestMarker(comments, agent, headSha);
   for (const comment of comments) {
     if (!isTrustedReviewLogin(comment.user?.login, agent, config)) continue;
-    if (agent === "codex" && classifyCodexSummaryComment(comment, headSha, marker, config) !== null) {
+    if (agent === "codex" && isCodexReviewSignal(comment.body)) {
       timestamps.push(reviewEvidenceTimestamp(comment));
     } else if (agent === "claude" && extractClaudeOutcome(comment.body) && extractMarkerSha(comment.body) === headSha) {
       timestamps.push(reviewEvidenceTimestamp(comment));

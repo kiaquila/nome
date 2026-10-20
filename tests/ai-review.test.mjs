@@ -276,7 +276,7 @@ test("completion events recover active-window signals once and keep the workflow
   assert.equal(signal, after);
   assert.equal(selectAiReviewRun([run()], head, signal).action, "rerun");
   assert.equal(selectAiReviewRun([run({ run_started_at: later })], head, signal).action, "already_evaluated");
-  assert.equal(latestAiReviewSignalTimestamp([comment(summary({ commit_sha: other }))], [], "codex", head), null);
+  assert.equal(latestAiReviewSignalTimestamp([comment(summary({ commit_sha: other }))], [], "codex", head), after);
   assert.equal(latestAiReviewSignalTimestamp([comment(receipt, { user: { login: "attacker" } })], [], "codex", head), null);
   assert.equal(latestAiReviewSignalTimestamp([markerComment, comment(legacy)], [], "codex", head), after);
   const neutralCompletion = comment(summary({ has_any_findings: null, has_unresolved_findings: null }), { created_at: before, updated_at: later });
@@ -356,7 +356,8 @@ test("runtime gate publishes real success/failure and context retains the event 
     ]) {
       const stale = direct(nextEvent);
       assert.equal(stale.status, 0, stale.stderr);
-      assert.doesNotMatch(stale.stdout, /RERUN_POST/);
+      if (nextEvent.comment) assert.match(stale.stdout, /RERUN_POST/);
+      else assert.doesNotMatch(stale.stdout, /RERUN_POST/);
     }
     const current = direct({ action: "edited", issue: { number: 1, pull_request: {} }, comment: comment(receipt, { updated_at: later }) });
     assert.equal(current.status, 0, current.stderr);
@@ -476,4 +477,14 @@ test("actual gate requires newer structured authority and pending wins equal tim
   }
   const negative = comment(unknown.body + '\n<details><summary>ℹ️ About Codex in GitHub</summary>P1 leak</details>');
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, clean, negative] })), 'fail');
+});
+
+
+test("trusted signals promoted to pending still wake a previously green gate", () => {
+  for (const body of [summary({ commit_sha: other }), receipt.replace(head.slice(0, 10), other.slice(0, 10)), "Codex Review: unknown new native format"]) {
+    const signal = comment(body, { updated_at: later });
+    assert.equal(shouldRouteAiReviewRerunEvent({ action: 'edited', issue: { pull_request: {} }, comment: signal }, 'codex'), true);
+    assert.equal(latestAiReviewSignalTimestamp([markerComment, signal], [], 'codex', head), later);
+    assert.equal(selectAiReviewRun([run({ conclusion: 'success', run_started_at: after })], head, later).action, 'rerun');
+  }
 });

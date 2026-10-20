@@ -13,3 +13,5 @@ Arbitrary suffix acceptance via a word exclusion list cannot prove a closing har
 ## CI security follow-up
 
 OSV found GHSA-6q48-6c7w-9gw2 in certifi 2026.6.17. Updated only certifi lock artifacts to the scanner-confirmed fixed version 2026.10.19; no unrelated dependency changes. Re-run full preflight and obtain fresh exact-head native review.
+
+Native review P1: aligned rerun timestamp collection with recognized trusted Codex signals, including head-mismatched/null classifier signals promoted to pending by latest-result selection. Added a regression proving a previously green gate requeues for these later signals.
