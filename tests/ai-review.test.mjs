@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync, execFileSync } from "node:child_process";
 import {
+  classifyCodexSummaryComment as classifyReceipt, latestCodexSummaryResult as selectSummary,
   classifyCodexSummaryComment, isAcceptableCodexSummaryComment,
   latestCodexSummaryResult, classifyCodexNativeReview,
   createAiReviewRequestMarkerBody
@@ -163,10 +164,10 @@ test("later clean evidence and newer requests never erase any current-head failu
   assert.equal(await evaluate(evidenceApi({ reviews: [formal({ body: "P1 issue", submitted_at: before }), formal({ id: 100, state: "APPROVED", submitted_at: later })] })), "fail");
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary({ has_any_findings: true }), { created_at: before, updated_at: before }), comment(summary(), { updated_at: later })] })), "fail");
   assert.equal(await evaluate(evidenceApi({ reviews: [formal({ state: "CHANGES_REQUESTED", commit_id: other, submitted_at: before })] })), "pass");
-  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary({ commit_sha: other, has_any_findings: true })), comment(receipt)] })), "pass");
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary({ commit_sha: other, has_any_findings: true })), comment(receipt)] })), "pending");
   const negativeReceipt = receipt.replace(legacy, "Codex Review: Found major issues.");
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(negativeReceipt, { updated_at: before }), comment(receipt)] })), "fail");
-  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(negativeReceipt.replace(head.slice(0, 10), other.slice(0, 10))), comment(receipt)] })), "pass");
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(negativeReceipt.replace(head.slice(0, 10), other.slice(0, 10))), comment(receipt)] })), "pending");
 });
 
 test("unresolved threads and GraphQL failures block every selected review agent", async () => {
@@ -437,4 +438,42 @@ test("only the isolated default-branch request job can write; validation fails a
       assert.equal(execution.status === 0, result === "success" || (result === "skipped" && mode === "skip"), `${result}/${mode}`);
     }
   }
+});
+
+
+test("unseen closings require an authoritative later structured verdict", () => {
+  const head = '2667f79cd7676ff331730cabf661d38dbbcddb0d';
+  const trusted = { login: 'chatgpt-codex-connector[bot]' };
+  const request = { agent: 'codex', sha: head, requestedAt: '2026-10-15T01:00:00Z' };
+  const make = (body, timestamp = '2026-10-15T02:00:00Z') => ({ id: 7, user: trusted, body, created_at: timestamp, updated_at: timestamp });
+  for (const closing of ['Swish!', "You're on a roll.", 'Another round soon, please!', "Chef's kiss.",
+    'May your coffee stay warm.', 'Authentication leaks credentials.', 'The deployment deletes all customer data.']) {
+    const unknown = make(`<!-- codex-review-receipt:v1 -->\nCodex Review: Didn't find any major issues. ${closing}\n\n**Reviewed commit:** \`${head}\``);
+    assert.notEqual(classifyReceipt(unknown, head, request), 'pass', closing);
+    const clean = make(summary(), '2026-10-15T03:00:00Z');
+    assert.equal(selectSummary([unknown, clean], head, request), 'pass');
+    assert.equal(selectSummary([clean, { ...unknown, updated_at: '2026-10-15T04:00:00Z' }], head, request), 'pass');
+  }
+  const clean = make(summary(), '2026-10-15T03:00:00Z');
+  for (const invalid of [
+    summary({ status: 'in_progress' }), summary({ has_any_findings: true }),
+    summary({ has_unresolved_findings: true }), summary({ commit_sha: 'a'.repeat(40) }),
+    summary().replace('"has_any_findings":false', '"has_any_findings":true,"has_any_findings":false'),
+    summary() + '\n<!-- codex-review-state:v1 {} -->', summary().replace('state:v1', 'state:v2'),
+    summary() + '\nFound unresolved issues.'
+  ]) assert.notEqual(selectSummary([clean, make(invalid, '2026-10-15T04:00:00Z')], head, request), 'pass', invalid);
+});
+
+
+test("actual gate corroborates either receipt order and pending wins equal-time clean state", async () => {
+  const unknown = comment(receipt.replace(':rocket:', 'Swish!'));
+  const clean = comment(summary());
+  for (const pair of [[unknown, clean], [clean, unknown]]) {
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, ...pair] })), 'pass');
+  }
+  for (const pair of [[clean, comment(summary({ status: 'running' }))], [comment(summary({ status: 'running' })), clean]]) {
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, ...pair] })), 'pending');
+  }
+  const negative = comment(unknown.body + '\n<details><summary>ℹ️ About Codex in GitHub</summary>P1 leak</details>');
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, clean, negative] })), 'fail');
 });
