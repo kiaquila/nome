@@ -76,7 +76,9 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
       // request never resolves a finding or dismisses a current-head failure.
       const hasNegativeEvidence = reviews.some((review) =>
         classifyCodexNativeReview(review, reviewComments, headSha, config) === "fail") ||
-        comments.some((comment) => classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
+        comments.some((comment) => (comment.body?.startsWith("<!-- codex-pull-request-review-summary -->") ||
+          (afterRequest(comment.updated_at) || afterRequest(comment.created_at))) &&
+          classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
       const freshNative = latestCodexNativeReviewResult(reviews.filter((review) => afterRequest(review.submitted_at)), reviewComments, headSha, config);
       const summary = latestCodexSummaryResult(comments, headSha, marker, config, timeline);
       if (hasNegativeEvidence || summary === "fail") result = "fail";

@@ -525,3 +525,13 @@ test('editing static receipt text cannot renew positive evidence', async () => {
   const legacyEdited = comment(legacy, { created_at: before, updated_at: later });
   assert.notEqual(classifyCodexSummaryComment(legacyEdited, head, marker), 'pass');
 });
+
+test('fresh approval supersedes old request prose failure and stale positive edit', async () => {
+  const oldFailure = comment('Codex Review: Found issues.', { created_at: before, updated_at: before });
+  const oldPositive = comment(receipt, { created_at: before, updated_at: later });
+  const fresh = comment(receipt, { created_at: after, updated_at: after });
+  for (const old of [oldFailure, oldPositive]) {
+    assert.equal(latestCodexSummaryResult([old, fresh], head, marker), 'pass');
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, fresh] })), 'pass');
+  }
+});
