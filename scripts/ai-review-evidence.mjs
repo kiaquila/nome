@@ -1,7 +1,7 @@
 import {
   isAcceptableClaudeComment,
   verdictTime,
-  hasCurrentHeadTypedFinding,
+  hasUnclearedTypedFindings,
   isCodexReviewSignal,
   isTrustedReviewLogin,
   classifyCodexNativeReview,
@@ -80,8 +80,9 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
       // request never resolves a finding or dismisses a current-head failure.
       const hasNegativeEvidence = reviews.some((review) =>
         classifyCodexNativeReview(review, reviewComments, headSha, config) === "fail") ||
-        comments.some((comment) => (hasCurrentHeadTypedFinding(comment, headSha) ||
-          (afterRequest(comment.updated_at) || afterRequest(comment.created_at))) &&
+        hasUnclearedTypedFindings(comments, headSha, marker, config) ||
+        comments.some((comment) => !/^<!-- (?:codex-pull-request-review-summary -->|codex-review-state:)/.test(String(comment.body || "").trim()) &&
+          (afterRequest(comment.updated_at) || afterRequest(comment.created_at)) &&
           classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
       const freshNative = latestCodexNativeReviewResult(reviews.filter((review) => afterRequest(review.submitted_at)), reviewComments, headSha, config);
       const summary = latestCodexSummaryResult(comments, headSha, marker, config, timeline);

@@ -368,19 +368,55 @@ export function isAcceptableClaudeComment(comment, headSha, config = {}) {
 }
 
 
-export function hasCurrentHeadTypedFinding(comment, headSha) {
+function validatedTypedState(comment) {
   const body = String(comment?.body || "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
-  if ((body.match(/<!-- codex-/g) || []).length !== 1) return false;
+  if ((body.match(/<!-- codex-/g) || []).length !== 1) return null;
   const match = body.match(/^<!-- codex-review-state:v1 (\{[^\n]+\}) -->/);
-  if (!match || match[1].includes("\\")) return false;
+  if (!match || match[1].includes("\\")) return null;
   for (const [key, count] of [["code_review", 1], ["security_review", 1],
     ["commit_sha", 2], ["has_any_findings", 2], ["has_unresolved_findings", 2], ["status", 2]]) {
-    if ((match[1].match(new RegExp(`"${key}"\\s*:`, "g")) || []).length !== count) return false;
+    if ((match[1].match(new RegExp(`"${key}"\\s*:`, "g")) || []).length !== count) return null;
   }
   let state;
-  try { state = JSON.parse(match[1]); } catch { return false; }
+  try { state = JSON.parse(match[1]); } catch { return null; }
   if (!exactKeys(state, ["code_review", "security_review"]) ||
-      !reviewStateIsValid(state.code_review) || !reviewStateIsValid(state.security_review)) return false;
-  return [state.code_review, state.security_review].some((review) => review.commit_sha === headSha &&
+      !reviewStateIsValid(state.code_review) || !reviewStateIsValid(state.security_review)) return null;
+  return state;
+}
+
+
+export function hasCurrentHeadTypedFinding(comment, headSha) {
+  const state = validatedTypedState(comment);
+  return !!state && Object.values(state).some((review) => review.commit_sha === headSha &&
     (review.has_any_findings === true || review.has_unresolved_findings === true));
+}
+
+export function hasUnclearedTypedFindings(comments, headSha, requestMarker, config = {}) {
+  const evidence = comments.filter((comment) => isTrustedReviewLogin(comment.user?.login, "codex", config))
+    .map((comment) => ({ comment, state: validatedTypedState(comment) })).filter((entry) => entry.state);
+  return evidence.some(({ comment, state }) => ["code_review", "security_review"].some((kind) => {
+    const finding = state[kind];
+    if (finding.commit_sha !== headSha || !(finding.has_any_findings || finding.has_unresolved_findings)) return false;
+    const findingAt = Math.floor(Date.parse(comment.updated_at || comment.created_at || "") / 1000);
+    return !evidence.some((clean) => {
+      const next = clean.state[kind];
+      return next.commit_sha === headSha && next.status === "completed" && next.has_any_findings === false &&
+        next.has_unresolved_findings === false && classifyCodexSummaryComment(clean.comment, headSha, requestMarker, config) === "pass" &&
+        sectionCompletionBucket(clean.comment, kind) > findingAt &&
+        sectionCompletionBucket(clean.comment, kind) > Math.floor(Date.parse(requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || "") / 1000);
+    });
+  }));
+}
+
+
+function sectionCompletionBucket(comment, kind) {
+  const title = kind === "security_review" ? "**Security Review**" : "**Code Review**";
+  const rows = String(comment.body || "").split(/\r?\n/).filter((line) => line.startsWith("|") && line.includes(title));
+  if (rows.length !== 1) return NaN;
+  const match = rows[0].match(/\| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \|/);
+  const value = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
+  const updated = Date.parse(comment.updated_at || comment.created_at || "");
+  return Number.isFinite(value) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(match[1]) &&
+    new Date(value).toISOString().slice(0, 19) === match[1].slice(0, 19) &&
+    value <= updated + 999 ? Math.floor(value / 1000) : NaN;
 }

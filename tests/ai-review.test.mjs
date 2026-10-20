@@ -163,10 +163,10 @@ test("actual gate evaluator accepts receipts and updated state, requires request
   await assert.rejects(evaluate(evidenceApi({ graphError: true })), /thread resolution/);
 });
 
-test("later clean evidence and newer requests never erase any current-head failure", async () => {
+test("native failures persist while newer explicit typed completion clears typed history", async () => {
   assert.equal(await evaluate(evidenceApi({ reviews: [formal({ state: "CHANGES_REQUESTED", submitted_at: before }), formal({ id: 100, submitted_at: later })] })), "fail");
   assert.equal(await evaluate(evidenceApi({ reviews: [formal({ body: "P1 issue", submitted_at: before }), formal({ id: 100, state: "APPROVED", submitted_at: later })] })), "fail");
-  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary({ has_any_findings: true }), { created_at: before, updated_at: before }), comment(summary(), { updated_at: later })] })), "fail");
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary({ has_any_findings: true }), { created_at: before, updated_at: before }), comment(summary(), { updated_at: later })] })), "pass");
   assert.equal(await evaluate(evidenceApi({ reviews: [formal({ state: "CHANGES_REQUESTED", commit_id: other, submitted_at: before })] })), "pass");
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(summary({ commit_sha: other, has_any_findings: true })), comment(receipt)] })), "pending");
   const negativeReceipt = receipt.replace(legacy, "Codex Review: Found major issues.");
@@ -597,4 +597,18 @@ test('duplicate state markers are malformed rather than permanent historical fin
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(receipt)] })), 'pass');
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(receipt), comment(body, { created_at: later, updated_at: later })] })), 'pass');
   }
+});
+
+
+test('newer canonical security completion explicitly clears typed security history', async () => {
+  const security = { ...completed, has_any_findings: true, has_unresolved_findings: true };
+  const old = comment(summary({}, security), { created_at: before, updated_at: before });
+  const row = `\n| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="2026-10-15T02:00:00Z">2026-10-15T02:00:00Z</relative-time> | \`${head.slice(0, 7)}\` | Manual request |`;
+  const clean = comment(summary({}, completed) + row);
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clean] })), 'pass');
+  const staleSecurity = { ...clean, body: clean.body.split('\n').map((line) => line.includes('**Security Review**') ? line.replaceAll(after, before) : line).join('\n') };
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, staleSecurity] })), 'pass');
+  const missingTime = { ...clean, body: clean.body.split('\n').map((line) => line.includes('**Security Review**') ? line.replace(/ <relative-time[^>]+>[^<]+<\/relative-time>/, '') : line).join('\n') };
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, missingTime] })), 'pass');
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary())] })), 'pass');
 });

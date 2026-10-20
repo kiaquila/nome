@@ -19,3 +19,5 @@ Unknown receipt closing prose alone never establishes approval. Modern native re
 Structured code approval uses the mandatory unique matching-head Code Review row completion datetime for freshness and ordering. It must follow the active request and cannot exceed comment edit time (allowing GitHub second precision). A security-only edit never refreshes or reorders an older code verdict. Pending/invalid state uses edit time to invalidate prior success.
 
 Positive static receipt/legacy evidence uses immutable `created_at` for request freshness and ordering. Editing positive text cannot renew an old approval or overtake later pending state. Invalidating evidence continues to use edit time.
+
+Validated typed findings persist across repeated requests until a strictly newer canonical completion explicitly clears the affected review section. Security findings require a matching current-head security row with its own valid completion datetime after the finding and request; fresh code completion, absent security state, stale security time or formal approval alone cannot clear that section. Native findings and unresolved threads retain their vetoes.
