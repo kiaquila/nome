@@ -106,8 +106,7 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
 
 
 function historicalStructuredFailureTargetsHead(comment, headSha) {
-  const body = String(comment?.body || "").trim();
-  if (body.startsWith("<!-- codex-pull-request-review-summary -->")) return true;
+  const body = String(comment?.body || "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
   const match = body.match(/^<!-- codex-review-state:v1 (\{[^\n]+\}) -->/);
   if (!match) return false;
   try {

@@ -569,3 +569,11 @@ test('strictly newer formal approval supersedes pending prose conservatively', a
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, ...extras, unknown], reviews: [formal({ submitted_at: after, state: 'APPROVED' })] })), 'pending');
   }
 });
+
+
+test('historical malformed or foreign outer state does not veto fresh proof', async () => {
+  for (const body of ['<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 broken -->', summary({ commit_sha: other, has_any_findings: true })]) {
+    const old = comment(body, { created_at: before, updated_at: before });
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(receipt)] })), 'pass');
+  }
+});

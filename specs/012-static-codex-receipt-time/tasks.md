@@ -16,3 +16,5 @@ Native P1 normalization follow-up: structured typed-finding veto uses the classi
 Native direct-marker follow-up: preserve failures for both normalized structured prefixes recognized by the classifier, including direct state markers. Actual-gate regression covers bare, whitespace and BOM forms. Mandatory preflight passed: 105 Python, 30 Node tests.
 
 Native head-lifecycle follow-up: historical direct-state veto requires matching full current code/security SHA. A strictly later exact-head formal approval may supersede older pending prose; same-second signals remain pending, and typed/native failures still veto. Actual-evaluator regressions cover foreign direct state and formal ordering. Mandatory preflight passed: 105 Python, 32 Node tests.
+
+Native outer-marker follow-up: require the same full current-head payload binding for historical outer summaries as for direct state markers; old malformed/foreign summaries cannot permanently veto fresh evidence. Actual-evaluator regressions added. Mandatory preflight passed: 105 Python, 33 Node tests.
