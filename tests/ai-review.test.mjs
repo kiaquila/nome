@@ -512,3 +512,16 @@ test("security-only edits cannot refresh or reorder old code completion", () => 
   assert.equal(selectSummary([unknown, dated(codeAt('2026-10-15T02:45:00Z'), '2026-10-15T03:00:00Z')], head, request), 'pass');
   assert.notEqual(classifyReceipt(dated(codeAt('2026-10-15T02:00:00Z').replace(/<relative-time[^>]+>[^<]+<\/relative-time>/, ''), '2026-10-15T03:00:00Z'), head, request), 'pass');
 });
+
+
+test('editing static receipt text cannot renew positive evidence', async () => {
+  const edited = comment(receipt, { created_at: after, updated_at: later });
+  const pending = comment(summary({ status: 'running' }), { created_at: '2026-10-15T02:30:00Z', updated_at: '2026-10-15T02:30:00Z' });
+  assert.equal(latestCodexSummaryResult([edited, pending], head, marker), 'pending');
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, edited, pending] })), 'pending');
+  const old = comment(receipt, { created_at: before, updated_at: later });
+  assert.notEqual(latestCodexSummaryResult([old], head, marker), 'pass');
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old] })), 'pass');
+  const legacyEdited = comment(legacy, { created_at: before, updated_at: later });
+  assert.notEqual(classifyCodexSummaryComment(legacyEdited, head, marker), 'pass');
+});

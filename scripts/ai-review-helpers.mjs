@@ -145,7 +145,7 @@ function codeCompletionTime(comment) {
 
 function verdictTime(comment, result) {
   return result === "pass" && String(comment?.body || "").trim().startsWith(summaryMarker)
-    ? codeCompletionTime(comment) : comment?.updated_at || comment?.created_at;
+    ? codeCompletionTime(comment) : result === "pass" ? comment?.created_at : comment?.updated_at || comment?.created_at;
 }
 
 const receiptMarker = "<!-- codex-review-receipt:v1 -->";
@@ -162,10 +162,10 @@ export function reviewEvidenceTimestamp(comment) {
   return comment?.updated_at || comment?.created_at;
 }
 
-function isAfterRequest(comment, requestMarker) {
+function isAfterRequest(comment, requestMarker, timestamp = reviewEvidenceTimestamp(comment)) {
   const requestedAt = Date.parse(requestMarker?.sourceCommentCreatedAt ||
     requestMarker?.requestedAt || requestMarker?.commentCreatedAt || "");
-  const updatedAt = Date.parse(reviewEvidenceTimestamp(comment) || "");
+  const updatedAt = Date.parse(timestamp || "");
   return Number.isFinite(requestedAt) && Number.isFinite(updatedAt) && updatedAt >= requestedAt;
 }
 
@@ -274,7 +274,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
   // New receipts must carry an explicit reviewed commit. Legacy text can use
   // a trusted request plus the caller's no-intervening-push timeline check.
   return !receipt && requestMarker?.agent === "codex" && requestMarker.sha === headSha &&
-    isAfterRequest(comment, requestMarker) ? "pass" : null;
+    isAfterRequest(comment, requestMarker, comment?.created_at) ? "pass" : null;
 }
 
 export function isAcceptableCodexSummaryComment(comment, headSha, requestMarker = null, config = {}) {
@@ -285,7 +285,7 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
   return comments.map((comment) => {
     let result = classifyCodexSummaryComment(comment, headSha, requestMarker, config);
     const unrecognized = result === null;
-    if (result === "pass" && !isAfterRequest(comment, requestMarker)) result = null;
+    if (result === "pass" && !isAfterRequest(comment, requestMarker, verdictTime(comment, result))) result = null;
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
     if (result === "pass" && hasHeadUpdateBetweenTimestamps(timeline, triggerAt, reviewEvidenceTimestamp(comment))) result = null;
     if (unrecognized && isTrustedReviewLogin(comment?.user?.login, "codex", config) &&
