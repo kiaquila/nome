@@ -26,7 +26,11 @@ const receipt = `<!-- codex-review-receipt:v1 -->\n\n${legacy}\n\n**Reviewed com
 const comment = (body, extra = {}) => ({ id: 7, body, user, created_at: after, updated_at: after, ...extra });
 const absent = { commit_sha: null, has_any_findings: null, has_unresolved_findings: null, status: null };
 const completed = { commit_sha: head, has_any_findings: false, has_unresolved_findings: false, status: "completed" };
-const summary = (code = {}, security = absent, rendered = "") => `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: { ...completed, ...code }, security_review: security })} -->\n\n## Codex Review Summary\n${rendered}`;
+const summary = (code = {}, security = absent, rendered = `This comment shows the latest Codex review activity on this pull request.
+
+| Review | Status | Commit | Review trigger |
+| --- | --- | --- | --- |
+| 📝 **Code Review** | ✅ **Completed** <relative-time datetime="2026-10-15T02:00:00Z">2026-10-15T02:00:00Z</relative-time> | \`${head.slice(0, 7)}\` | Manual request |`) => `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: { ...completed, ...code }, security_review: security })} -->\n\n## Codex Review Summary\n${rendered}`;
 const classify = (body, extra = {}) => classifyCodexSummaryComment(comment(body, extra), head, marker);
 
 test("real receipt, legacy, curly apostrophe and official footer pass", () => {
@@ -59,7 +63,7 @@ test("malformed/duplicate receipt markers and contradictory prose fail closed", 
 
 test("structured state requires a typed complete full-head explicit verdict", () => {
   assert.equal(classify(summary()), "pass");
-  assert.equal(classify(summary({}, completed)), "pass");
+  assert.equal(classify(summary({}, completed)), "pending"); // Both completed review rows are required.
   for (const code of [ { commit_sha: other }, { commit_sha: head.slice(0, 10) }, { commit_sha: null }, { status: "in_progress" }, { status: "Completed" }, { has_any_findings: null }, { has_unresolved_findings: null }, { has_any_findings: "false" }, { has_any_findings: true }, { has_unresolved_findings: true }, { unexpected: false } ]) {
     assert.notEqual(classify(summary(code)), "pass", JSON.stringify(code));
   }
@@ -75,7 +79,7 @@ test("observed native summary table agrees with the structured verdict, includin
 
 | Review | Status | Commit | Review trigger |
 | --- | --- | --- | --- |
-| 📝 **Code Review** | ✅ **Completed** <relative-time datetime="2026-10-15T21:49:22.023292Z">2026-10-15T21:49:22.023292Z</relative-time> | \`${head.slice(0, 7)}\` | Manual request |
+| 📝 **Code Review** | ✅ **Completed** <relative-time datetime="2026-10-15T01:49:22.023292Z">2026-10-15T01:49:22.023292Z</relative-time> | \`${head.slice(0, 7)}\` | Manual request |
 
 <details> <summary>ℹ️ About Codex in GitHub</summary>
 <br/>
@@ -107,7 +111,7 @@ test("latest mutable summary uses updated_at and retains negative evidence acros
   assert.equal(latestCodexSummaryResult([updated], head, marker), "pass");
   assert.equal(latestCodexSummaryResult([comment(receipt), comment(summary({ has_any_findings: true }), { created_at: before, updated_at: later })], head, marker), "fail");
   assert.equal(latestCodexSummaryResult([comment(summary({ has_any_findings: true }), { updated_at: before })], head, marker), "fail");
-  assert.equal(latestCodexSummaryResult([comment(summary(), { created_at: before, updated_at: before })], head, marker), null);
+  assert.equal(latestCodexSummaryResult([comment(summary(), { created_at: before, updated_at: before })], head, marker), "pending");
   assert.equal(latestCodexSummaryResult([updated], head, marker, {}, [{ event: "committed", created_at: after }]), null);
 });
 
@@ -451,11 +455,11 @@ test("unseen closings require an authoritative later structured verdict", () => 
     'May your coffee stay warm.', 'Authentication leaks credentials.', 'The deployment deletes all customer data.']) {
     const unknown = make(`<!-- codex-review-receipt:v1 -->\nCodex Review: Didn't find any major issues. ${closing}\n\n**Reviewed commit:** \`${head}\``);
     assert.notEqual(classifyReceipt(unknown, head, request), 'pass', closing);
-    const clean = make(summary(), '2026-10-15T03:00:00Z');
+    const clean = make(summary().replaceAll('2026-10-15T10:01:00Z', '2026-10-15T03:00:00Z').replaceAll('2026-10-15T02:00:00Z', '2026-10-15T03:00:00Z'), '2026-10-15T03:00:00Z');
     assert.equal(selectSummary([unknown, clean], head, request), 'pass');
     assert.notEqual(selectSummary([clean, { ...unknown, updated_at: '2026-10-15T04:00:00Z' }], head, request), 'pass');
   }
-  const clean = make(summary(), '2026-10-15T03:00:00Z');
+  const clean = make(summary().replaceAll('2026-10-15T10:01:00Z', '2026-10-15T03:00:00Z').replaceAll('2026-10-15T02:00:00Z', '2026-10-15T03:00:00Z'), '2026-10-15T03:00:00Z');
   for (const invalid of [
     summary({ status: 'in_progress' }), summary({ has_any_findings: true }),
     summary({ has_unresolved_findings: true }), summary({ commit_sha: 'a'.repeat(40) }),
@@ -469,7 +473,7 @@ test("unseen closings require an authoritative later structured verdict", () => 
 test("actual gate requires newer structured authority and pending wins equal time", async () => {
   const unknown = comment(receipt.replace(':rocket:', 'Swish!'));
   const clean = comment(summary());
-  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, unknown, { ...clean, updated_at: later }] })), 'pass');
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, unknown, { ...clean, body: clean.body.replaceAll(after, later), updated_at: later }] })), 'pass');
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, clean, { ...unknown, updated_at: later }] })), 'pending');
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, unknown, clean] })), 'pending');
   for (const pair of [[clean, comment(summary({ status: 'running' }))], [comment(summary({ status: 'running' })), clean]]) {
@@ -487,4 +491,24 @@ test("trusted signals promoted to pending still wake a previously green gate", (
     assert.equal(latestAiReviewSignalTimestamp([markerComment, signal], [], 'codex', head), later);
     assert.equal(selectAiReviewRun([run({ conclusion: 'success', run_started_at: after })], head, later).action, 'rerun');
   }
+});
+
+
+test("security-only edits cannot refresh or reorder old code completion", () => {
+  const head = '2667f79cd7676ff331730cabf661d38dbbcddb0d';
+  const user = { login: 'chatgpt-codex-connector[bot]' };
+  const request = { agent: 'codex', sha: head, requestedAt: '2026-10-15T01:00:00Z' };
+  const dated = (body, updated_at) => ({ user, body, created_at: '2026-10-15T00:00:00Z', updated_at });
+  const codeAt = (time) => summary().replace(/datetime="[^"]+">[^<]+<\/relative-time>/g, `datetime="${time}">${time}</relative-time>`);
+  const unknown = dated(`<!-- codex-review-receipt:v1 -->\nCodex Review: Didn't find any major issues. Needs work.\n\n**Reviewed commit:** \`${head}\``, '2026-10-15T02:30:00Z');
+  const edited = dated(codeAt('2026-10-15T02:00:00Z'), '2026-10-15T03:00:00Z');
+  assert.equal(selectSummary([unknown, edited], head, request), 'pending');
+  const sameSecond = dated(codeAt('2026-10-15T02:30:00.070Z'), '2026-10-15T03:00:00Z');
+  assert.equal(selectSummary([unknown, sameSecond], head, request), 'pending');
+  assert.notEqual(classifyReceipt(dated(codeAt('2026-10-15T01:00:00.070Z'), '2026-10-15T03:00:00Z'), head, request), 'pass');
+  assert.notEqual(classifyReceipt(dated(codeAt('2026-10-15T01:00:00Z'), '2026-10-15T03:00:00Z'), head, request), 'pass');
+  assert.notEqual(classifyReceipt(dated(codeAt('2026-10-15T00:30:00Z'), '2026-10-15T03:00:00Z'), head, request), 'pass');
+  assert.notEqual(classifyReceipt(dated(codeAt('2026-10-15T04:00:00Z'), '2026-10-15T03:00:00Z'), head, request), 'pass');
+  assert.equal(selectSummary([unknown, dated(codeAt('2026-10-15T02:45:00Z'), '2026-10-15T03:00:00Z')], head, request), 'pass');
+  assert.notEqual(classifyReceipt(dated(codeAt('2026-10-15T02:00:00Z').replace(/<relative-time[^>]+>[^<]+<\/relative-time>/, ''), '2026-10-15T03:00:00Z'), head, request), 'pass');
 });

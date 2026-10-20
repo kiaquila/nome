@@ -133,6 +133,21 @@ export function extractCodexPriority(body) {
 }
 
 
+
+function codeCompletionTime(comment) {
+  const rows = String(comment?.body || "").split(/\r?\n/).filter((line) => line.startsWith("|") && line.includes("**Code Review**"));
+  if (rows.length !== 1) return null;
+  const match = rows[0].match(/\| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \|/);
+  const value = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
+  const edited = Date.parse(comment?.updated_at || comment?.created_at || "");
+  return Number.isFinite(value) && Number.isFinite(edited) && value <= edited + 999 ? match[1] : null;
+}
+
+function verdictTime(comment, result) {
+  return result === "pass" && String(comment?.body || "").trim().startsWith(summaryMarker)
+    ? codeCompletionTime(comment) : comment?.updated_at || comment?.created_at;
+}
+
 const receiptMarker = "<!-- codex-review-receipt:v1 -->";
 const summaryMarker = "<!-- codex-pull-request-review-summary -->";
 
@@ -174,10 +189,10 @@ function withoutCodexFooter(body) {
   return body.replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "").trim();
 }
 
-function renderedSummaryAgrees(rendered, state, headSha) {
+function renderedSummaryAgrees(rendered, state, headSha, requestMarker) {
   const text = withoutCodexFooter(rendered);
   if (text === null) return false;
-  if (!text || /^(?:Code review\s*)?(?:Completed\s*)?(?:No (?:major issues|findings)(?: found)?[.!]?|Codex Review: Didn['’]t find any major issues[.!]?)$/i.test(text)) return true;
+
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const introduction = "This comment shows the latest Codex review activity on this pull request.";
   if (lines.shift() !== introduction || lines.shift() !== "| Review | Status | Commit | Review trigger |" ||
@@ -187,7 +202,9 @@ function renderedSummaryAgrees(rendered, state, headSha) {
   return lines.every((line, index) => {
     const row = line.match(/^\| (📝|🛡️|🔒) \*\*(Code Review|Security Review)\*\* \| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \| `([a-f0-9]{7})` \| (?:Manual request|Automatic review) \|$/);
     return row && row[2] === expectedReviews[index] && (row[2] !== "Code Review" || row[1] === "📝") &&
-      row[3] === row[4] && Number.isFinite(Date.parse(row[3])) && row[5] === headSha.slice(0, 7);
+      row[3] === row[4] && Number.isFinite(Date.parse(row[3])) &&
+      (row[2] !== "Code Review" || (Number.isFinite(Date.parse(requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt || "")) &&
+        Math.floor(Date.parse(row[3]) / 1000) > Math.floor(Date.parse(requestMarker.sourceCommentCreatedAt || requestMarker.requestedAt || requestMarker.commentCreatedAt) / 1000))) && row[5] === headSha.slice(0, 7);
   });
 }
 
@@ -225,14 +242,14 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
       // Native non-review replies can set Completed with null findings flags.
       // This is no verdict: it cannot pass alone or erase a valid receipt.
       // Keep a distinct signal so completion recovery retains its edit time.
-      return absent && renderedSummaryAgrees(rendered, state, headSha) ? "neutral" : "pending";
+      return absent && renderedSummaryAgrees(rendered, state, headSha, requestMarker) ? "neutral" : "pending";
     }
     if (!absent && (security.commit_sha !== headSha || security.status !== "completed" ||
         security.has_any_findings !== false || security.has_unresolved_findings !== false)) return "fail";
     // Additional native rendered content may contain findings; require its
     // explicit verdict to agree, rather than trusting a heading or Completed.
-    if (!renderedSummaryAgrees(rendered, state, headSha)) return "pending";
-    return "pass";
+    if (!renderedSummaryAgrees(rendered, state, headSha, requestMarker)) return "pending";
+    return codeCompletionTime(comment) ? "pass" : "pending";
   }
 
   const reviewedCommits = [...body.matchAll(/^\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/gm)];
@@ -273,9 +290,9 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
     if (result === "pass" && hasHeadUpdateBetweenTimestamps(timeline, triggerAt, reviewEvidenceTimestamp(comment))) result = null;
     if (unrecognized && isTrustedReviewLogin(comment?.user?.login, "codex", config) &&
         isCodexReviewSignal(comment?.body) && isAfterRequest(comment, requestMarker)) result = "pending";
-    return { comment, result };
+    return { comment, result, time: verdictTime(comment, result) };
   }).filter((entry) => entry.result !== null && entry.result !== "neutral")
-    .sort((left, right) => Date.parse(reviewEvidenceTimestamp(right.comment)) - Date.parse(reviewEvidenceTimestamp(left.comment)) ||
+    .sort((left, right) => Math.floor(Date.parse(right.time) / 1000) - Math.floor(Date.parse(left.time) / 1000) ||
       ({ fail: 3, pending: 2, pass: 1 }[right.result] || 0) - ({ fail: 3, pending: 2, pass: 1 }[left.result] || 0))[0]?.result || null;
 }
 

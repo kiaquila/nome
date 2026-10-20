@@ -15,3 +15,5 @@ Review evidence parsing and tests; runtime bot behavior is unchanged.
 
 ## Negative scenarios
 Unknown receipt wording alone, arbitrary contradictory prose, stale SHA/request, spoofed identity, duplicate/unknown markers, pending/security findings or contradictory visible text cannot pass.
+
+Structured code approval uses the mandatory unique matching-head Code Review row completion datetime for freshness and ordering. It must follow the active request and cannot exceed comment edit time (allowing GitHub second precision). A security-only edit never refreshes or reorders an older code verdict. Pending/invalid state uses edit time to invalidate prior success.
