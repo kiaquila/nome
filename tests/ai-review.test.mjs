@@ -543,3 +543,12 @@ test('normalized historical typed findings retain their veto', async () => {
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, finding, comment(receipt)] })), 'fail');
   }
 });
+
+
+test('direct structured-state failures remain vetoes across requests', async () => {
+  const direct = summary({ has_any_findings: true }).replace('<!-- codex-pull-request-review-summary -->\n', '');
+  for (const prefix of ['', ' \n', '\ufeff']) {
+    const finding = comment(prefix + direct, { created_at: before, updated_at: before });
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, finding, comment(receipt)] })), 'fail');
+  }
+});

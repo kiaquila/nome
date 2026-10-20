@@ -12,3 +12,5 @@ Independent parser review found that updated_at allowed an edited old positive r
 Cross-repository native-review regression confirmed historical prose failures incorrectly persisted across requests in the actual gate. Scope prose failures to current request while preserving typed/native finding vetoes. Tests cover old failure and stale edited approval followed by fresh clean proof. Required preflight passed: 105 Python and 28 Node tests.
 
 Native P1 normalization follow-up: structured typed-finding veto uses the classifier's trimmed-body convention, including BOM and leading whitespace. Actual-gate regressions cover both. Mandatory preflight passed: 105 Python, 29 Node tests.
+
+Native direct-marker follow-up: preserve failures for both normalized structured prefixes recognized by the classifier, including direct state markers. Actual-gate regression covers bare, whitespace and BOM forms. Mandatory preflight passed: 105 Python, 30 Node tests.
