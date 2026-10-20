@@ -144,6 +144,16 @@ function codeCompletionTime(comment) {
 }
 
 export function verdictTime(comment, result) {
+  if (result === "fail") {
+    const state = validatedTypedState(comment);
+    if (state) {
+      const clocks = ["code_review", "security_review"].filter((kind) =>
+        state[kind].has_any_findings === true || state[kind].has_unresolved_findings === true
+      ).map((kind) => state[kind].status === "completed" ? sectionCompletionBucket(comment, kind) : NaN);
+      if (clocks.length && clocks.every(Number.isFinite)) return new Date(Math.max(...clocks) * 1000).toISOString();
+    }
+  }
+
   return result === "pass" && String(comment?.body || "").trim().startsWith(summaryMarker)
     ? codeCompletionTime(comment) : result === "pass" ? comment?.created_at : comment?.updated_at || comment?.created_at;
 }
@@ -397,7 +407,8 @@ export function hasUnclearedTypedFindings(comments, headSha, requestMarker, conf
   return evidence.some(({ comment, state }) => ["code_review", "security_review"].some((kind) => {
     const finding = state[kind];
     if (finding.commit_sha !== headSha || !(finding.has_any_findings || finding.has_unresolved_findings)) return false;
-    const findingAt = Math.floor(Date.parse(comment.updated_at || comment.created_at || "") / 1000);
+    const sectionTime = state[kind].status === "completed" ? sectionCompletionBucket(comment, kind) : NaN;
+    const findingAt = Number.isFinite(sectionTime) ? sectionTime : Math.floor(Date.parse(comment.updated_at || comment.created_at || "") / 1000);
     return !evidence.some((clean) => {
       const next = clean.state[kind];
       return next.commit_sha === headSha && next.status === "completed" && next.has_any_findings === false &&

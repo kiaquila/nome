@@ -466,7 +466,7 @@ test("unseen closings require an authoritative later structured verdict", () => 
     summary().replace('"has_any_findings":false', '"has_any_findings":true,"has_any_findings":false'),
     summary() + '\n<!-- codex-review-state:v1 {} -->', summary().replace('state:v1', 'state:v2'),
     summary() + '\nFound unresolved issues.'
-  ]) assert.notEqual(selectSummary([clean, make(invalid, '2026-10-15T04:00:00Z')], head, request), 'pass', invalid);
+  ]) assert.notEqual(selectSummary([clean, make(invalid.replaceAll('2026-10-15T02:00:00Z', '2026-10-15T04:00:00Z'), '2026-10-15T04:00:00Z')], head, request), 'pass', invalid);
 });
 
 
@@ -611,4 +611,18 @@ test('newer canonical security completion explicitly clears typed security histo
   const missingTime = { ...clean, body: clean.body.split('\n').map((line) => line.includes('**Security Review**') ? line.replace(/ <relative-time[^>]+>[^<]+<\/relative-time>/, '') : line).join('\n') };
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, missingTime] })), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary())] })), 'pass');
+});
+
+
+test('canonical finding completion is not refreshed by later comment edits', async () => {
+  const old = comment(summary({ has_any_findings: true }).replaceAll(after, before), { created_at: before, updated_at: later });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary())] })), 'pass');
+});
+
+
+test('security finding clock ignores unrelated newer code completion edits', async () => {
+  const securityRow = (time) => '\n| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="' + time + '">' + time + '</relative-time> | `2667f79` | Manual request |';
+  const old = comment(summary({}, { ...completed, has_any_findings: true, has_unresolved_findings: true }).replaceAll(after, later) + securityRow(before), { created_at: before, updated_at: later });
+  const clean = comment(summary({}, completed) + securityRow(after));
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clean] })), 'pass');
 });
