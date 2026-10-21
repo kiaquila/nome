@@ -130,3 +130,5 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Cover actual Unicode full-case-fold footnote matching with the shared generated primitive and exact SS/ß regression.
 
 - [x] Cover actual late bug finding edit versus intermediate clean evidence, strictly newer canonical recovery, and no/zero/paragraph controls.
+
+- [x] Cover actual tab-expanded container indentation, abrupt comment closers, raw legacy named spacing references, and negated finding clearance.

@@ -87,3 +87,5 @@ Official GitHub rendering retains the outer destination for an angle autolink in
 Footnote identifiers use Unicode 16.0 full case folding, with a shared generated exception table and per-code-point lowercase fallback; protocol bytes and canonical state fields are unchanged.
 
 The shared affirmative finding noun category includes bugs consistently for article, count, and existential statements. A late visible bug statement renews negative observation time; only a strictly newer canonical section clearance resolves it. No/zero statements and paragraph boundaries retain their existing semantics.
+
+Container indentation uses four-column tab stops. Abrupt HTML comment closers preserve subsequent visible text; raw HTML legacy spacing references follow HTML rules without changing Markdown entity parsing. Explicitly negated finding statements remain clean evidence rather than affirmative findings.

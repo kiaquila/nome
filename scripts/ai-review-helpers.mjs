@@ -334,8 +334,8 @@ function htmlVisibleText(text, inlineBoundary, literals = [], rawBlock = false) 
   for (let index = 0; index < text.length;) {
     if (text[index] !== "<") { result += text[index++]; continue; }
     if (text.startsWith("<!--", index)) {
-      const end = text.indexOf("-->", index + 4);
-      index = end < 0 ? text.length : end + 3;
+      const comment = text.slice(index).match(/^<!--(?:>|->|[\s\S]*?(?:-->|--!>|$))/);
+      index += comment[0].length;
       continue;
     }
     const tag = text.slice(index).match(/^<\/?([a-z][a-z0-9-]*)(?=[\s/>])/i);
@@ -414,14 +414,21 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
     const line = eligible[index] || "";
     const raw = line.match(/^ {0,3}<(script|pre|style|textarea)(?=[ \t\f>]|$)/i);
     let terminator = raw ? new RegExp("</" + raw[1] + "[ \\t\\f]*>", "i") : null;
-    if (/^ {0,3}<!--/.test(line)) terminator = /-->/;
+    if (/^ {0,3}<!--/.test(line)) terminator = /(?:^ {0,3}<!--(?:>|->)|-->|--!>)/;
     else if (/^ {0,3}<\?/.test(line)) terminator = /\?>/;
     else if (/^ {0,3}<![A-Z]/.test(line)) terminator = />/;
     else if (/^ {0,3}<!\[CDATA\[/.test(line)) terminator = /\]\]>/;
     const blankEnded = !terminator && (blockTag.test(line) || ((!index || !peel(lines[index - 1]).trim()) && completeTag.test(line)));
     if (!terminator && !blankEnded) continue;
+    const expandTabs = (value) => {
+      let column = 0;
+      return value.replace(/[^\t]|\t/g, (character) => {
+        if (character !== "\t") { column++; return character; }
+        const width = 4 - column % 4; column += width; return " ".repeat(width);
+      });
+    };
     const containers = [];
-    let opening = lines[index];
+    let opening = expandTabs(lines[index]);
     for (;;) {
       const prefix = opening.match(/^ {0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)/);
       if (!prefix) break;
@@ -429,6 +436,7 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
       opening = opening.slice(prefix[0].length);
     }
     const withinContainer = (value) => {
+      value = expandTabs(value);
       for (const container of containers) {
         if (container.quote) {
           const prefix = value.match(/^ {0,3}>[ \t]?/);
@@ -450,7 +458,8 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
     const decoded = visible.replace(/&#(x[0-9a-f]+|[0-9]+);?/gi, (entity, value) => {
       const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
       return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
-    }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity);
+    }).replace(/&(?:nbsp|shy);?/g, (entity) => entity.startsWith("&nbsp") ? "\u00a0" : "\u00ad")
+      .replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity);
     const slot = blockLiterals.push(decoded) - 1;
     lines[index] = "\uE005" + slot + "\uE006";
     for (let inner = index + 1; inner <= end; inner++) lines[inner] = "";
@@ -466,7 +475,7 @@ function visibleReviewText(body, inlineBoundary = "") {
   const markdownLiterals = [];
   const htmlProtected = protectHtmlBlockMarkdown(String(body || ""), inlineBoundary, literals, blockLiterals);
   const protectedCode = protectMarkdownCode(htmlProtected, markdownLiterals);
-  const commentsRemoved = protectedCode.replace(/<!--[\s\S]*?(?:-->|$)/g,
+  const commentsRemoved = protectedCode.replace(/<!--(?:>|->|[\s\S]*?(?:-->|--!>|$))/g,
     (comment) => comment.replace(/[^\r\n]/g, ""));
   const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary, literals), null, null, markdownLiterals)
     .replace(/\uE000(\d+)\uE001/g, (_, index) => literals[Number(index)]);
@@ -480,9 +489,9 @@ function visibleReviewText(body, inlineBoundary = "") {
 }
 
 function hasPositiveFindingStatement(text) {
-  return /\b[a-z]+[ \t]+(?:an?|one)[ \t]+(?:[a-z-]+[ \t]+)*(?:issues?|findings?|problems?|bugs?)\b/i.test(text) || /\b[1-9][0-9]*\s+(?:[a-z-]+\s+)*(?:issues?|findings?|problems?|bugs?)\b/i.test(text) || [...text.matchAll(/\b(?:found|there (?:is|are)) ([^.!?\n]*\b(?:issues?|findings?|problems?|bugs?)\b)/gi)].some((statement) =>
+  return [...text.matchAll(/\b[a-z]+[ \t]+(?:an?|one)[ \t]+(?:[a-z-]+[ \t]+)*(?:issues?|findings?|problems?|bugs?)\b/gi)].some((match) => !/^(?:not|no)\b/i.test(match[0]) && !/\bno[ \t]+$/i.test(text.slice(0, match.index))) || /\b[1-9][0-9]*\s+(?:[a-z-]+\s+)*(?:issues?|findings?|problems?|bugs?)\b/i.test(text) || [...text.matchAll(/\b(?:found|there (?:is|are)) ([^.!?\n]*\b(?:issues?|findings?|problems?|bugs?)\b)/gi)].some((statement) =>
     statement[1].split(/\s+(?:and|but)\s+|[,;]/i).some((clause) =>
-      /\b(?:issues?|findings?|problems?|bugs?)\b/i.test(clause) && !/^(?:no|zero|0)\b/i.test(clause.trim())));
+      /\b(?:issues?|findings?|problems?|bugs?)\b/i.test(clause) && !/^(?:no|zero|0|not)\b/i.test(clause.trim())));
 }
 
 export function containsBlockingSeverity(body, agent) {
