@@ -122,7 +122,9 @@ function visibleReviewText(body) {
   return String(body || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
-  }).replace(/&(?:MediumSpace|hairsp);/gi, " ").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
+  }).replace(/&(?:MediumSpace|hairsp);/gi, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/<\/?(?:strong|em)\b[^>]*>/gi, "")
+    .replace(/\p{Cf}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
 export function containsBlockingSeverity(body, agent) {

@@ -64,3 +64,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 16:38/16:41 actual counterparts: reject code-indented summary headings after BOM or same-line presentation metadata; normalize MediumSpace/hairsp in existing visible warning checks. Hidden or multiline-comment-split completion rows remain unable to approve or clear findings; focused production-path controls cover both.
 
 16:38/16:41 corrections passed mandatory preflight: 105 Python and 57 Node tests; independent bounded review cleared exact controls.
+
+16:46 actual native counterparts: rendered link-label/inline-HTML/Cf warnings in permitted informational footers remain blocking. Completion rows inside collapsed informational details cannot grant approval or clear history (HA corrected visible-row collection; Nome already rejected). Exact production-path controls cover approval and clearance.
+
+16:46 consolidated corrections passed mandatory preflight: 105 Python and 57 Node tests; independent bounded reviewer cleared rendered-footer and collapsed-row controls.
