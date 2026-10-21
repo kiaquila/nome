@@ -755,4 +755,10 @@ test('protocol discovery and partial projection preserve pending and genuine fin
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), inactiveWarning], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   const canonical = { ...invalidClear, body: invalidClear.body.replace('⚠️ Do not merge', '🔄 **Running** since <relative-time datetime="' + before + '">' + before + '</relative-time>') };
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), canonical], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  for (const prefix of ['    ', '\t']) {
+    const todoClear = { ...canonical, body: summary().replaceAll(after, before) + '\n' + prefix + '<!-- TODO -->' };
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), todoClear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  }
+  const warningLabel = { ...canonical, body: canonical.body.replace('🔒 **Security Review**', '⚠️ Do not merge 🔒 **Security Review**') };
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), warningLabel], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
 });

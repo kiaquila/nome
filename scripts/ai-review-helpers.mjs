@@ -494,7 +494,8 @@ function hasIndentedCodexEnvelope(body) {
 function removableCompanionRow(comment, review, kind, row) {
   if (!review?.commit_sha) return false;
   const cells = row.split("|").map((cell) => cell.trim());
-  if (cells.length !== 6 || cells[3] !== "`" + review.commit_sha.slice(0, 7) + "`" ||
+  const label = kind === "security_review" ? /^(?:🛡️|🔒) \*\*Security Review\*\*$/ : /^📝 \*\*Code Review\*\*$/;
+  if (cells.length !== 6 || !label.test(cells[1]) || cells[3] !== "`" + review.commit_sha.slice(0, 7) + "`" ||
       !["Manual request", "Automatic review"].includes(cells[4])) return false;
   if (review.status === "completed") return /^✅ \*\*Completed\*\* /.test(cells[2]) &&
     Number.isFinite(sectionCompletionBucket(comment, kind, review.commit_sha));
