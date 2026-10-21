@@ -92,3 +92,9 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Preserve warning labels in valid whitespace/empty-destination links while escaped openers and malformed destinations remain literal; verify raw HTML containers and unmatched closing tags cannot lend completion clocks or clear findings.
 
 - [x] Retain visible priorities in code-rendered literal link syntax; cover native code span, fenced block and raw code footer regressions.
+
+- [x] Preserve actual nested-link precedence and literal Markdown code warnings before HTML/link/entity projection; cover rendered-equivalent duplicate Security rows without granting authority.
+
+- [x] Reject unmatched footer closures swallowing visible failed rows; preserve quoted code warnings and existing singular article finding statements with exact native regressions.
+
+- [x] Share validated inline/reference destination grammar for multiline definitions and preserve literal code under quote/list containers.

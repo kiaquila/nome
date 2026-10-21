@@ -121,8 +121,49 @@ export function latestAiReviewRequestMarker(comments = [], agent, headSha) {
 // HTML5 named whitespace/format entities (standard HTML entity names).
 const htmlSpacingEntities = {"ApplyFunction": "\u2061", "InvisibleComma": "\u2063", "InvisibleTimes": "\u2062", "MediumSpace": "\u205f", "NegativeMediumSpace": "\u200b", "NegativeThickSpace": "\u200b", "NegativeThinSpace": "\u200b", "NegativeVeryThinSpace": "\u200b", "NewLine": "\n", "NoBreak": "\u2060", "NonBreakingSpace": "\u00a0", "Tab": "\t", "ThickSpace": "\u205f\u200a", "ThinSpace": "\u2009", "VeryThinSpace": "\u200a", "ZeroWidthSpace": "\u200b", "af": "\u2061", "emsp": "\u2003", "emsp13": "\u2004", "emsp14": "\u2005", "ensp": "\u2002", "hairsp": "\u200a", "ic": "\u2063", "it": "\u2062", "lrm": "\u200e", "nbsp": "\u00a0", "numsp": "\u2007", "puncsp": "\u2008", "rlm": "\u200f", "shy": "\u00ad", "thinsp": "\u2009", "zwj": "\u200d", "zwnj": "\u200c"};
 // Only presentation is projected here; machine evidence keeps its original bytes.
-function markdownLinkLabels(text) {
-  const references = new Set([...text.matchAll(/^ {0,3}\[([^\]\n]+)\]:[ \t]*(?:<[^<>\s]+>|[^\s]+)(?:[ \t]+.*)?$/gm)].map((match) => match[1].trim().replace(/\s+/g, " ").toLowerCase()));
+function validMarkdownDestination(raw, allowEmpty = true) {
+  raw = raw.replace(/\r\n?/g, "\n");
+  if (/\n[ \t\f\v]*\n/.test(raw)) return false;
+  const destination = raw.replace(/^[ \t\n\f\v]*|[ \t\n\f\v]*$/g, "");
+  if (!destination) return allowEmpty;
+  if (/\\([^\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e])/.test(destination)) return false;
+  const match = destination.match(/^((?:<[^<>\s]*>|(?:\\.|[^\x00-\x20\x7f<>])+))(?:(?:[ \t\f\v]+(?:\n[ \t\f\v]*)?|\n[ \t\f\v]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?$/);
+  if (!match) return false;
+  if (match[1].startsWith("<")) return true;
+  let depth = 0;
+  for (let index = 0; index < match[1].length; index++) {
+    if (match[1][index] === "\\") { index++; continue; }
+    if (match[1][index] === "(") depth++;
+    if (match[1][index] === ")" && --depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+function markdownLinkLabels(text, knownReferences = null, onLink = null) {
+  const references = knownReferences || new Set();
+  if (!knownReferences) {
+    const lines = text.split(/\r\n|\r|\n/);
+    for (let index = 0; index < lines.length; index++) {
+      const definition = lines[index].match(/^ {0,3}\[([^\]\n]+)\]:[ \t\f\v]*(.*)$/);
+      if (!definition) continue;
+      const destinationIndex = definition[2] ? index : index + 1;
+      let destination = definition[2] || (/^ {0,3}\S/.test(lines[destinationIndex] || "") ? lines[destinationIndex] : "");
+      let valid = validMarkdownDestination(destination, false), consumed = destinationIndex;
+      // A reference title can begin on the next line and continue without a blank line.
+      if ((!valid || /^(?:<[^<>\s]*>|(?:\\.|[^\s<>])+)$/.test(destination.trim())) &&
+          /^ {0,3}["'(]/.test(lines[destinationIndex + 1] || "")) {
+        let candidate = destination;
+        for (let next = destinationIndex + 1; next < lines.length && !/^[ \t\f\v]*$/.test(lines[next]); next++) {
+          candidate += "\n" + lines[next];
+          if (validMarkdownDestination(candidate, false)) { destination = candidate; valid = true; consumed = next; break; }
+        }
+      }
+      if (valid) {
+        references.add(definition[1].trim().replace(/\s+/g, " ").toLowerCase());
+        index = consumed;
+      }
+    }
+  }
   let result = "";
   for (let index = 0; index < text.length;) {
     const linePrefix = text.slice(text.lastIndexOf("\n", index - 1) + 1, index);
@@ -150,7 +191,12 @@ function markdownLinkLabels(text) {
     }
     const label = text.slice(index + 1, labelEnd - 1);
     const labelReference = label.trim().replace(/\s+/g, " ").toLowerCase();
+    let nestedLink = false;
+    if (!brackets && label.includes("[")) markdownLinkLabels(label, references, () => { nestedLink = true; });
+    // GFM gives an inner active link precedence; the outer destination stays literal.
+    if (nestedLink) { result += text[index++]; continue; }
     if (!brackets && text[labelEnd] !== "[" && text[labelEnd] !== "(" && references.has(labelReference)) {
+      if (text[index - 1] !== "!") onLink?.();
       result += label;
       index = labelEnd;
       continue;
@@ -159,6 +205,7 @@ function markdownLinkLabels(text) {
       const referenceEnd = text.indexOf("]", labelEnd + 1);
       const reference = text.slice(labelEnd + 1, referenceEnd).trim().replace(/\s+/g, " ").toLowerCase() || labelReference;
       if (referenceEnd >= 0 && references.has(reference)) {
+        if (text[index - 1] !== "!") onLink?.();
         result += text.slice(index + 1, labelEnd - 1);
         index = referenceEnd + 1;
         continue;
@@ -170,13 +217,13 @@ function markdownLinkLabels(text) {
       if (text[destinationEnd] === "\\") { destinationEnd++; continue; }
       const character = text[destinationEnd];
       if (titleQuote) { if (character === titleQuote) titleQuote = null; continue; }
-      if ((character === '"' || character === "'") && /\s/.test(text[destinationEnd - 1])) { titleQuote = character; continue; }
+      if ((character === '"' || character === "'") && /[ \t\r\n\f\v]/.test(text[destinationEnd - 1])) { titleQuote = character; continue; }
       if (text[destinationEnd] === "(") parentheses++;
       if (text[destinationEnd] === ")") parentheses--;
     }
     const rawDestination = text.slice(labelEnd + 1, destinationEnd - 1);
-    const destination = rawDestination.replace(/^[ \t\r\n\f\v]*|[ \t\r\n\f\v]*$/g, "");
-    if (parentheses || /\r?\n[ \t]*\r?\n/.test(rawDestination) || destination && (/\\([^\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e])/.test(destination) || !/^(?:<[^<>\s]*>|(?:\\.|[^\s<>])+)(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?\s*$/.test(destination))) { result += text[index++]; continue; }
+    if (parentheses || !validMarkdownDestination(rawDestination)) { result += text[index++]; continue; }
+    if (text[index - 1] !== "!") onLink?.();
     result += text.slice(index + 1, labelEnd - 1);
     index = destinationEnd;
   }
@@ -224,9 +271,38 @@ function htmlVisibleText(text, inlineBoundary, literals = []) {
   return result;
 }
 
+function protectMarkdownCode(text, literals) {
+  let result = "";
+  const keep = (literal) => "\uE002" + (literals.push(literal) - 1) + "\uE003";
+  for (let index = 0; index < text.length;) {
+    const lineStart = index === 0 || text[index - 1] === "\n";
+    if (lineStart && /^(?: {0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]))*(?: {4}|\t)/.test(text.slice(index))) {
+      const end = text.indexOf("\n", index);
+      const stop = end < 0 ? text.length : end;
+      result += keep(text.slice(index, stop)); index = stop; continue;
+    }
+    const fence = lineStart && text.slice(index).match(/^(?: {0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]))* {0,3}(`{3,}|~{3,})[^\n]*(?:\n|$)/);
+    if (fence) {
+      const close = new RegExp("^(?: {0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]))* {0,3}" + fence[1][0] + "{" + fence[1].length + ",}[ \t]*$", "m").exec(text.slice(index + fence[0].length));
+      const end = close ? index + fence[0].length + close.index + close[0].length : text.length;
+      result += keep(text.slice(index, end)); index = end; continue;
+    }
+    if (text[index] === "`") {
+      const run = text.slice(index).match(/^`+/)[0];
+      let end = index + run.length;
+      while ((end = text.indexOf(run, end)) >= 0 && (text[end - 1] === "`" || text[end + run.length] === "`")) end += run.length;
+      if (end >= 0) { result += keep(text.slice(index, end + run.length)); index = end + run.length; continue; }
+    }
+    result += text[index++];
+  }
+  return result;
+}
+
 function visibleReviewText(body, inlineBoundary = "") {
   // Structural parsing uses raw bytes: entities cannot create quotes, tags or links.
-  const commentsRemoved = String(body || "").replace(/<!--[\s\S]*?(?:-->|$)/g,
+  const markdownLiterals = [];
+  const protectedCode = protectMarkdownCode(String(body || ""), markdownLiterals);
+  const commentsRemoved = protectedCode.replace(/<!--[\s\S]*?(?:-->|$)/g,
     (comment) => comment.replace(/[^\r\n]/g, ""));
   const literals = [];
   const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary, literals))
@@ -235,13 +311,14 @@ function visibleReviewText(body, inlineBoundary = "") {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
   }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity)
+    .replace(/\uE002(\d+)\uE003/g, (_, index) => markdownLiterals[Number(index)])
     .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
 export function containsBlockingSeverity(body, agent) {
   const text = agent === "codex" ? visibleReviewText(body) : String(body || "");
   if (agent === "codex") {
-    return /\bP[0-2]\b|\bdo not merge\b|\bfound (?:some |major |any )?(?:issues|findings)\b|\bsecurity review failed\b|\breview pending\b|\bchanges requested\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
+    return /\bP[0-2]\b|\bdo not merge\b|\bfound (?:some |major |any |an? )?(?:issues?|findings?)\b|\bsecurity review failed\b|\breview pending\b|\bchanges requested\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
   }
   if (agent === "gemini") {
     return /\b(critical|high)\b/i.test(text);
@@ -318,6 +395,7 @@ function reviewStateIsValid(state) {
 }
 
 function withoutCodexFooter(body) {
+  if ((body.match(/<details>/g) || []).length !== (body.match(/<\/details>/g) || []).length) return null;
   if ((body.match(/<details>/g) || []).length > 1 || containsBlockingSeverity(body, "codex") ||
       /unresolved (?:issues|findings)|found (?:some |major )?(?:issues|findings)/i.test(body)) return null;
   return body.replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "").trim();
@@ -401,7 +479,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
   text = withoutCodexFooter(text);
   if (text === null) return "fail";
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (reviewedCommits.length && /(?:here are[\s\S]*suggestions|found (?:some |major |any )?(?:issues|findings)|changes requested|unresolved findings)/i.test(text)) return "fail";
+  if (reviewedCommits.length && /(?:here are[\s\S]*suggestions|found (?:some |major |any |an? )?(?:issues?|findings?)|changes requested|unresolved findings)/i.test(text)) return "fail";
   if (!/^Codex Review: Did(?: not|n['’]t) find any major issues\.(?:\s*(?::rocket:|🚀|:\+1:|👍|Keep it up!|Breezy!|Already looking forward to the next diff\.))*$/i.test(lines[0] || "")) return "pending";
   const commitLine = lines[1]?.match(/^\*\*Reviewed commit:\*\* `([a-f0-9]{10}|[a-f0-9]{40})`$/);
   if (lines.length > (commitLine ? 2 : 1)) return "fail";

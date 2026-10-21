@@ -49,3 +49,11 @@ Negative-only visible text removes raw comments while preserving line boundaries
 Existing explicit finding, failed/pending review and changes-requested footer contradictions cannot approve or clear findings. Case-varied rendered review labels participate only in ambiguity detection; canonical original labels remain required for authoritative clocks.
 
 Link-label projection preserves code-rendered literal text in Markdown code spans/fences and raw code elements, so visible priority warnings inside literal link syntax remain counterevidence. This presentation handling grants no machine or completion-clock authority.
+
+Nested active links retain precedence over an invalid enclosing link in visible warning checks; the enclosing destination remains literal counterevidence. Balanced plain labels remain supported.
+
+Markdown literal code is isolated before HTML, links and entity projection; indented code, spans and fences retain their visible literal warning text. Rendered-equivalent duplicate review labels remain ambiguity only and never supply a clock.
+
+Informational footer removal requires a single balanced details element; content after its matching close remains subject to the original strict grammar. Blockquote-contained code fences remain literal in warning projection, and the existing finding category includes singular article wording.
+
+Defined reference links support a destination on the following line using the same destination/title validation as inline links. Quote and list container prefixes are recognized before literal code classification.
