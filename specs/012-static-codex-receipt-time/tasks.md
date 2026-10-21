@@ -46,3 +46,5 @@ Official marker discovery is case-insensitive. Indented protocol examples in lat
 Native BOM follow-up: normalize U+FEFF before examining leading protocol indentation, so BOM-prefixed Markdown examples cannot approve, create findings, or clear history. Actual evaluator regressions cover four spaces and tabs; mandatory preflight passed (105 Python, 51 Node tests).
 
 Companion projection requires exact canonical first-cell review labels; warning text cannot be erased with an otherwise canonical Running row. BOM-prefixed indented envelopes remain Markdown examples. Actual evaluator/gate paired controls pass; mandatory preflight validation recorded on the final head.
+
+Native negative-presentation follow-up: genuine leading typed findings survive trailing quoted/fenced examples and bare markers. Duplicate markers within the leading envelope and whole quoted/fenced envelopes remain non-authoritative. Approval and clearing still require the original full body. Actual gate/evaluator paired regressions and independent bounded review passed.

@@ -408,14 +408,23 @@ function validatedTypedState(comment) {
 
 
 export function hasCurrentHeadTypedFinding(comment, headSha) {
-  const state = validatedTypedState(comment);
+  const state = leadingNegativeState(comment);
   return !!state && Object.values(state).some((review) => review.commit_sha === headSha &&
     (review.has_any_findings === true || review.has_unresolved_findings === true));
 }
 
+// Negative facts belong to the canonical leading envelope. Later finding
+// presentation cannot erase them; approval and resolution still parse the full body.
+function leadingNegativeState(comment) {
+  if (hasIndentedCodexEnvelope(comment?.body)) return null;
+  const body = String(comment?.body || "").trim().replace(/<!--(?! codex-)[\s\S]*?-->/gi, "").trim();
+  const match = body.match(/^(?:<!-- codex-pull-request-review-summary -->\s*)?<!-- codex-review-state:v1 .*? -->\s*## Codex Review Summary(?:\r?\n|$)/s);
+  return match ? validatedTypedState({ ...comment, body: match[0] }) : null;
+}
+
 export function hasUnclearedTypedFindings(comments, headSha, requestMarker, config = {}) {
   const evidence = comments.filter((comment) => isTrustedReviewLogin(comment.user?.login, "codex", config))
-    .map((comment) => ({ comment, state: validatedTypedState(comment) })).filter((entry) => entry.state);
+    .map((comment) => ({ comment, state: leadingNegativeState(comment) })).filter((entry) => entry.state);
   return evidence.some(({ comment, state }) => ["code_review", "security_review"].some((kind) => {
     const finding = state[kind];
     if (finding.commit_sha !== headSha || !(finding.has_any_findings || finding.has_unresolved_findings)) return false;
@@ -476,6 +485,7 @@ function canonicalSectionClear(comment, state, kind, headSha, config, validateCo
 
 // A resolved own-section finding cannot erase a newer invalid companion.
 function validFindingCompanions(comment, state, headSha, config = {}, allowResolvedOwn = false) {
+  if (!state) return false;
   return Object.entries(state).every(([kind, review]) => {
     const title = kind === "security_review" ? "**Security Review**" : "**Code Review**";
     if (Object.values(review).every((value) => value === null)) return !String(comment.body || "").split(/\r?\n/).some((line) => line.startsWith("|") && line.includes(title));

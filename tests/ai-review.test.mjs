@@ -589,10 +589,10 @@ test('historical schema-invalid typed payload cannot veto fresh approval permane
 });
 
 
-test('duplicate state markers are malformed rather than permanent historical findings', async () => {
+test('duplicate state markers within the leading envelope are malformed', async () => {
   const valid = summary({ has_any_findings: true });
   const payload = valid.split('\n')[1];
-  for (const body of [valid + '\n' + payload, valid.replace('<!-- codex-pull-request-review-summary -->\n', '') + '\n' + payload]) {
+  for (const body of [valid.replace(payload, payload + '\n' + payload), valid.replace('<!-- codex-pull-request-review-summary -->\n', '').replace(payload, payload + '\n' + payload)]) {
     const old = comment(body, { created_at: before, updated_at: before });
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(receipt)] })), 'pass');
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(receipt), comment(body, { created_at: later, updated_at: later })] })), 'pass');
@@ -761,4 +761,16 @@ test('protocol discovery and partial projection preserve pending and genuine fin
   }
   const warningLabel = { ...canonical, body: canonical.body.replace('🔒 **Security Review**', '⚠️ Do not merge 🔒 **Security Review**') };
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), warningLabel], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+});
+
+
+test('leading typed findings survive trailing presentation without authorizing examples', async () => {
+  const negative = summary({ has_any_findings: true }).replaceAll(after, before);
+  for (const tail of ['\n> ```html\n> <!-- codex-review-state:v1 {} -->\n> ```', '\n<!-- codex-review-state:v1 {} -->']) {
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(negative + tail, { created_at: before, updated_at: before }), comment(receipt)] })), 'pass');
+    assert.notEqual(classify(summary() + tail), 'pass');
+  }
+  for (const body of ['```html\n' + negative + '\n```', negative.split('\n').map(line => '> ' + line).join('\n'), negative.replace('## Codex Review Summary', '<!-- codex-review-state:v1 {} -->\n## Codex Review Summary')]) {
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(body, { created_at: before, updated_at: before }), comment(receipt)] })), 'pass');
+  }
 });
