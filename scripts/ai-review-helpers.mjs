@@ -165,7 +165,7 @@ const receiptMarker = "<!-- codex-review-receipt:v1 -->";
 const summaryMarker = "<!-- codex-pull-request-review-summary -->";
 
 export function isCodexReviewSignal(body) {
-  const text = String(body || "").trim();
+  const text = String(body || "").trim().replace(/^(?:<!--(?! codex-)[\s\S]*?-->\s*)+/gi, "");
   return /^Codex Review:/i.test(text) ||
     /^<!-- (?:codex-review-receipt:|codex-pull-request-review-summary(?: |-->)|codex-review-state:)/i.test(text);
 }
@@ -428,7 +428,9 @@ export function hasUnclearedTypedFindings(comments, headSha, requestMarker, conf
   return evidence.some(({ comment, state }) => ["code_review", "security_review"].some((kind) => {
     const finding = state[kind];
     if (finding.commit_sha !== headSha || !(finding.has_any_findings || finding.has_unresolved_findings)) return false;
-    const sectionTime = state[kind].status === "completed" ? sectionCompletionBucket(comment, kind, headSha) : NaN;
+    const sectionTime = state[kind].status === "completed" && canonicalSectionClear(comment,
+      { ...state, [kind]: { ...state[kind], has_any_findings: false, has_unresolved_findings: false } },
+      kind, headSha, config, false) ? sectionCompletionBucket(comment, kind, headSha) : NaN;
     const findingAt = Number.isFinite(sectionTime) ? sectionTime : Math.floor(Date.parse(comment.updated_at || comment.created_at || "") / 1000);
     return !evidence.some((clean) => {
       const next = clean.state[kind];
@@ -444,7 +446,10 @@ function sectionCompletionBucket(comment, kind, headSha = null) {
   const rows = String(comment.body || "").split(/\r?\n/).filter((line) => line.startsWith("|") && line.includes(title));
   if (rows.length !== 1) return NaN;
   const cells = rows[0].split("|").map((cell) => cell.trim());
-  if (cells.length !== 6 || (headSha && cells[3] !== "`" + headSha.slice(0, 7) + "`")) return NaN;
+  const label = kind === "security_review" ? /^(?:🛡️|🔒) \*\*Security Review\*\*$/ : /^📝 \*\*Code Review\*\*$/;
+  if (cells.length !== 6 || !label.test(cells[1]) || cells[5] !== "" ||
+      !["Manual request", "Automatic review"].includes(cells[4]) ||
+      (headSha && cells[3] !== "`" + headSha.slice(0, 7) + "`")) return NaN;
   const match = rows[0].match(/\| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \|/);
   const value = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
   const updated = Date.parse(comment.updated_at || comment.created_at || "");

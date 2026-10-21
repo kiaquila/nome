@@ -773,4 +773,24 @@ test('leading typed findings survive trailing presentation without authorizing e
   for (const body of ['```html\n' + negative + '\n```', negative.split('\n').map(line => '> ' + line).join('\n'), negative.replace('## Codex Review Summary', '<!-- codex-review-state:v1 {} -->\n## Codex Review Summary')]) {
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(body, { created_at: before, updated_at: before }), comment(receipt)] })), 'pass');
   }
+  const oldTime = '2026-10-14T23:00:00Z';
+  const old = comment(negative.replaceAll(before, oldTime), { created_at: oldTime, updated_at: oldTime });
+  const fencedClear = comment('```html\n' + summary().replaceAll(after, before) + '\n```', { created_at: before, updated_at: before });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, fencedClear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+});
+
+
+test('warning-bearing own finding row keeps edit-time invalidation', async () => {
+  const old = comment(summary({ has_any_findings: true }).replaceAll(after, before).replace('📝 **Code Review**', '⚠️ Do not merge 📝 **Code Review**'), { created_at: before, updated_at: later });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary())] })), 'pass');
+  for (const prose of ['Found P1 issues.', 'Security review failed.']) {
+    const edited = { ...old, body: old.body.replace('⚠️ Do not merge 📝 **Code Review**', '📝 **Code Review**') + '\n' + prose };
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, edited, comment(summary())] })), 'pass');
+  }
+});
+
+
+test('leading metadata cannot hide a newer malformed protocol observation', async () => {
+  const malformed = comment('<!-- TODO -->\n<!-- codex-review-state:v1 broken -->', { created_at: later, updated_at: later });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(receipt), malformed] })), 'pass');
 });

@@ -48,3 +48,7 @@ Native BOM follow-up: normalize U+FEFF before examining leading protocol indenta
 Companion projection requires exact canonical first-cell review labels; warning text cannot be erased with an otherwise canonical Running row. BOM-prefixed indented envelopes remain Markdown examples. Actual evaluator/gate paired controls pass; mandatory preflight validation recorded on the final head.
 
 Native negative-presentation follow-up: genuine leading typed findings survive trailing quoted/fenced examples and bare markers. Duplicate markers within the leading envelope and whole quoted/fenced envelopes remain non-authoritative. Approval and clearing still require the original full body. Actual gate/evaluator paired regressions and independent bounded review passed.
+
+Actual native own-clock follow-up: warning-bearing row labels, unsupported triggers and contrary finding prose cannot borrow an old completion time; canonical own-section presentation is required, independently of companion state. Metadata-prefixed malformed protocol observations remain pending (Nome discovery normalized; HA already protected). Fenced-only clean counterparts cannot resolve findings. Bounded actual-path regressions pass.
+
+Consolidated actual-native corrections passed mandatory preflight: 105 Python, 54 Node tests. Independent bounded reviewer cleared own-row warning/prose clocks, metadata discovery and fenced-clear controls.
