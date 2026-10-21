@@ -671,3 +671,30 @@ test('mismatched visible finding head cannot lend an old clearance clock', async
   const clean = comment(summary(), { created_at: after, updated_at: after });
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, clean] })), 'pass');
 });
+
+
+test('security-only completed finding keeps its canonical clock after clearance', async () => {
+  const row = (time) => '\n| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="' + time + '">' + time + '</relative-time> | `2667f79` | Manual request |';
+  const old = comment(summary(absent, { ...completed, has_any_findings: true }).replace(/\n\| 📝[^\n]*/, '') + row(before), { created_at: before, updated_at: later });
+  const clear = comment(summary({}, completed) + row(after));
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+});
+
+
+test('historical typed findings survive multiline JSON and unrelated HTML comments', async () => {
+  const body = summary({ has_any_findings: true });
+  const multiline = body.replace(/(<!-- codex-review-state:v1 )(.*?)( -->)/, (_, prefix, json, suffix) => prefix + JSON.stringify(JSON.parse(json), null, 2) + suffix);
+  for (const variant of [multiline, body.replace('<!-- codex-review-state:', '<!-- TODO -->\n<!-- codex-review-state:')]) {
+    const old = comment(variant.replaceAll(after, '2026-10-15T00:00:00Z'), { created_at: '2026-10-15T00:00:00Z', updated_at: '2026-10-15T00:00:00Z' });
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  }
+});
+
+
+test('canonical later security clear retires mismatched historical finding rendering', async () => {
+  const row = (time, short = '2667f79') => '\n| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="' + time + '">' + time + '</relative-time> | `' + short + '` | Manual request |';
+  const findingAt = '2026-10-15T02:30:00Z';
+  const old = comment(summary({}, { ...completed, has_any_findings: true }) + row(after, 'aaaaaaa'), { updated_at: findingAt });
+  const clear = comment(summary({}, completed) + row(later), { updated_at: later });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clear] })), 'pass');
+});

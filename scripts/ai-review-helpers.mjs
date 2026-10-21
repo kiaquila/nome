@@ -144,12 +144,14 @@ function codeCompletionTime(comment) {
 }
 
 export function verdictTime(comment, result) {
-  if (result === "fail") {
+  {
     const state = validatedTypedState(comment);
     if (state && Object.values(state).every((review) => review.status === null || review.status === "completed")) {
       const clocks = ["code_review", "security_review"].filter((kind) =>
         state[kind].has_any_findings === true || state[kind].has_unresolved_findings === true
-      ).map((kind) => state[kind].status === "completed" ? sectionCompletionBucket(comment, kind, state[kind].commit_sha) : NaN);
+      ).map((kind) => state[kind].status === "completed" && canonicalSectionClear(comment,
+        { ...state, [kind]: { ...state[kind], has_any_findings: false, has_unresolved_findings: false } },
+        kind, state[kind].commit_sha, {}) ? sectionCompletionBucket(comment, kind, state[kind].commit_sha) : NaN);
       if (clocks.length && clocks.every(Number.isFinite)) return new Date(Math.max(...clocks) * 1000).toISOString();
     }
   }
@@ -301,7 +303,7 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
         !(result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
           hasUnclearedTypedFindings(comments, headSha, requestMarker, config))) result = null;
     if (result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
-        canonicalTypedRowsAgree(comment, validatedTypedState(comment), headSha) &&
+        Object.values(validatedTypedState(comment)).every((review) => review.status === null || review.status === "completed") &&
         !hasUnclearedTypedFindings(comments, headSha, requestMarker, config)) result = "neutral";
     if (result === "pass" && !isAfterRequest(comment, requestMarker, verdictTime(comment, result))) result = null;
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
@@ -387,9 +389,9 @@ export function isAcceptableClaudeComment(comment, headSha, config = {}) {
 
 
 function validatedTypedState(comment) {
-  const body = String(comment?.body || "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
+  const body = String(comment?.body || "").trim().replace(/<!--(?! codex-)[\s\S]*?-->/g, "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
   if ((body.match(/<!-- codex-/g) || []).length !== 1) return null;
-  const match = body.match(/^<!-- codex-review-state:v1 (\{[^\n]+\}) -->/);
+  const match = body.match(/^<!-- codex-review-state:v1 (\{[\s\S]*?\}) -->/);
   if (!match || match[1].includes("\\")) return null;
   for (const [key, count] of [["code_review", 1], ["security_review", 1],
     ["commit_sha", 2], ["has_any_findings", 2], ["has_unresolved_findings", 2], ["status", 2]]) {
