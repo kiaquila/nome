@@ -740,3 +740,19 @@ test('case-varied unknown protocol cannot clear typed finding history', async ()
   const invalidClear = comment(summary().replaceAll(after, before) + '\n<!-- CODEX-unknown -->', { created_at: before, updated_at: before });
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, invalidClear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
 });
+
+
+test('protocol discovery and partial projection preserve pending and genuine findings', async () => {
+  const upper = comment(summary().replace('codex-pull-request-review-summary', 'CODEX-PULL-REQUEST-REVIEW-SUMMARY'), { updated_at: later });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(summary()), upper] })), 'pass');
+  const oldTime = '2026-10-14T23:00:00Z';
+  const oldBody = summary({ has_any_findings: true }).replaceAll(after, oldTime);
+  const old = comment(oldBody + '\nExample:\n    <!-- codex-review-state:v1 {} -->', { created_at: oldTime, updated_at: oldTime });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  const invalidClear = comment(summary({}, { ...completed, status: 'running' }).replaceAll(after, before) + '\n| 🔒 **Security Review** | ⚠️ Do not merge | `2667f79` | Manual request |', { created_at: before, updated_at: before });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), invalidClear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  const inactiveWarning = { ...invalidClear, body: summary().replaceAll(after, before) + '\n| 🔒 **Security Review** | ⚠️ Do not merge | `2667f79` | Manual request |' };
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), inactiveWarning], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  const canonical = { ...invalidClear, body: invalidClear.body.replace('⚠️ Do not merge', '🔄 **Running** since <relative-time datetime="' + before + '">' + before + '</relative-time>') };
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), canonical], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+});

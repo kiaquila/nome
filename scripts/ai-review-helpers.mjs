@@ -167,8 +167,7 @@ const summaryMarker = "<!-- codex-pull-request-review-summary -->";
 export function isCodexReviewSignal(body) {
   const text = String(body || "").trim();
   return /^Codex Review:/i.test(text) ||
-    text.startsWith("<!-- codex-review-receipt:") ||
-    text.startsWith(summaryMarker) || text.startsWith("<!-- codex-review-state:");
+    /^<!-- (?:codex-review-receipt:|codex-pull-request-review-summary(?: |-->)|codex-review-state:)/i.test(text);
 }
 
 export function reviewEvidenceTimestamp(comment) {
@@ -224,7 +223,7 @@ function renderedSummaryAgrees(rendered, state, headSha, requestMarker) {
 // Parse a closed schema. Unknown versions, duplicate JSON keys/markers and prose
 // cannot silently become a positive verdict. The native summary is mutable.
 export function classifyCodexSummaryComment(comment, headSha, requestMarker = null, config = {}) {
-  if (/^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/m.test(String(comment?.body || ""))) return null;
+  if (hasIndentedCodexEnvelope(comment?.body)) return null;
   if (!/^[a-f0-9]{40}$/.test(headSha || "") ||
       !isTrustedReviewLogin(comment?.user?.login, "codex", config)) return null;
   const body = String(comment?.body || "").trim();
@@ -232,7 +231,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
 
   if (body.startsWith(summaryMarker) || body.startsWith("<!-- codex-review-state:")) {
     const match = body.match(/^<!-- codex-pull-request-review-summary -->\s*<!-- codex-review-state:v1 (\{[^\n]+\}) -->\s*## Codex Review Summary(?:\s|$)/);
-    if (!match || (body.match(/<!-- codex-/gi) || []).length !== 2) return "fail";
+    if (!match || codexProtocolMarkerCount(body) !== 2) return "fail";
     if (match[1].includes("\\")) return "fail";
     let state;
     try { state = JSON.parse(match[1]); } catch { return "fail"; }
@@ -391,9 +390,9 @@ export function isAcceptableClaudeComment(comment, headSha, config = {}) {
 
 
 function validatedTypedState(comment) {
-  if (/^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/m.test(String(comment?.body || ""))) return null;
+  if (hasIndentedCodexEnvelope(comment?.body)) return null;
   const body = String(comment?.body || "").trim().replace(/<!--(?! codex-)[\s\S]*?-->/gi, "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
-  if ((body.match(/<!-- codex-/gi) || []).length !== 1) return null;
+  if (codexProtocolMarkerCount(body) !== 1) return null;
   const match = body.match(/^<!-- codex-review-state:v1 (\{[\s\S]*?\}) -->/);
   if (!match || match[1].includes("\\")) return null;
   for (const [key, count] of [["code_review", 1], ["security_review", 1],
@@ -456,7 +455,11 @@ function canonicalTypedRowsAgree(comment, state, headSha) {
 }
 
 
-function canonicalSectionClear(comment, state, kind, headSha, config) {
+function canonicalSectionClear(comment, state, kind, headSha, config, validateCompanion = true) {
+  const other = kind === "code_review" ? "security_review" : "code_review";
+  const otherTitle = other === "security_review" ? "**Security Review**" : "**Code Review**";
+  const otherRows = String(comment.body || "").split(/\r?\n/).filter((line) => line.startsWith("|") && line.includes(otherTitle));
+  if (validateCompanion && (otherRows.length > 1 || (otherRows.length === 1 && !removableCompanionRow(comment, state[other], other, otherRows[0])))) return false;
   const target = kind === "security_review" ? "**Security Review**" : "**Code Review**";
   const absent = { commit_sha: null, has_any_findings: null, has_unresolved_findings: null, status: null };
   const body = String(comment.body || "").trim();
@@ -478,6 +481,33 @@ function validFindingCompanions(comment, state, headSha, config = {}, allowResol
     if (Object.values(review).every((value) => value === null)) return !String(comment.body || "").split(/\r?\n/).some((line) => line.startsWith("|") && line.includes(title));
     if (review.status !== "completed") return false;
     if (allowResolvedOwn && review.commit_sha === headSha && (review.has_any_findings || review.has_unresolved_findings)) return true;
-    return canonicalSectionClear(comment, { ...state, [kind]: { ...review, has_any_findings: false, has_unresolved_findings: false } }, kind, review.commit_sha, config);
+    return canonicalSectionClear(comment, { ...state, [kind]: { ...review, has_any_findings: false, has_unresolved_findings: false } }, kind, review.commit_sha, config, false);
   });
+}
+
+
+function hasIndentedCodexEnvelope(body) {
+  const leading = String(body || "").match(/^(?:[ \t\r\n]*<!--[\s\S]*?-->)*[ \t\r\n]*/)?.[0] || "";
+  return /^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/im.test(leading);
+}
+
+function removableCompanionRow(comment, review, kind, row) {
+  if (!review?.commit_sha) return false;
+  const cells = row.split("|").map((cell) => cell.trim());
+  if (cells.length !== 6 || cells[3] !== "`" + review.commit_sha.slice(0, 7) + "`" ||
+      !["Manual request", "Automatic review"].includes(cells[4])) return false;
+  if (review.status === "completed") return /^✅ \*\*Completed\*\* /.test(cells[2]) &&
+    Number.isFinite(sectionCompletionBucket(comment, kind, review.commit_sha));
+  if (!["running", "in_progress"].includes(review.status)) return false;
+  const match = cells[2].match(/^🔄 \*\*Running\*\* since <relative-time datetime="([^"]+)">([^<]+)<\/relative-time>$/);
+  const time = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
+  return Number.isFinite(time) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(match[1]) &&
+    new Date(time).toISOString().slice(0, 19) === match[1].slice(0, 19) &&
+    time <= Date.parse(comment.updated_at || comment.created_at || "") + 999;
+}
+
+
+function codexProtocolMarkerCount(body) {
+  return (String(body || "").split(/\r?\n/).filter((line) =>
+    !/^(?: {4,}|[ \t]*\t)/.test(line)).join("\n").match(/<!-- codex-/gi) || []).length;
 }
