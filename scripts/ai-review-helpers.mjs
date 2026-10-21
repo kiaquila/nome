@@ -232,7 +232,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
 
   if (body.startsWith(summaryMarker) || body.startsWith("<!-- codex-review-state:")) {
     const match = body.match(/^<!-- codex-pull-request-review-summary -->\s*<!-- codex-review-state:v1 (\{[^\n]+\}) -->\s*## Codex Review Summary(?:\s|$)/);
-    if (!match || (body.match(/<!-- codex-/g) || []).length !== 2) return "fail";
+    if (!match || (body.match(/<!-- codex-/gi) || []).length !== 2) return "fail";
     if (match[1].includes("\\")) return "fail";
     let state;
     try { state = JSON.parse(match[1]); } catch { return "fail"; }
@@ -392,8 +392,8 @@ export function isAcceptableClaudeComment(comment, headSha, config = {}) {
 
 function validatedTypedState(comment) {
   if (/^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/m.test(String(comment?.body || ""))) return null;
-  const body = String(comment?.body || "").trim().replace(/<!--(?! codex-)[\s\S]*?-->/g, "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
-  if ((body.match(/<!-- codex-/g) || []).length !== 1) return null;
+  const body = String(comment?.body || "").trim().replace(/<!--(?! codex-)[\s\S]*?-->/gi, "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
+  if ((body.match(/<!-- codex-/gi) || []).length !== 1) return null;
   const match = body.match(/^<!-- codex-review-state:v1 (\{[\s\S]*?\}) -->/);
   if (!match || match[1].includes("\\")) return null;
   for (const [key, count] of [["code_review", 1], ["security_review", 1],

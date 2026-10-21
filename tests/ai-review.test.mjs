@@ -732,3 +732,11 @@ test('finding-bearing foreign companion requires its own visible row and configu
   const clean = comment(summary(), { user: custom });
   assert.equal(selectSummary([coherent, clean], head, marker, { trustedReviewLogins: [custom.login] }), 'pass');
 });
+
+
+test('case-varied unknown protocol cannot clear typed finding history', async () => {
+  const oldTime = '2026-10-14T23:00:00Z';
+  const old = comment(summary({ has_any_findings: true }).replaceAll(after, oldTime), { created_at: oldTime, updated_at: oldTime });
+  const invalidClear = comment(summary().replaceAll(after, before) + '\n<!-- CODEX-unknown -->', { created_at: before, updated_at: before });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, invalidClear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+});
