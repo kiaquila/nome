@@ -86,3 +86,5 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 17:23 actual native findings: warning presentation projection consumes quoted HTML attributes and balanced Markdown link destinations fully. Exact permitted-footer Do <span title=">">not</span> merge and Do [not](https://example.com/(x)) merge remain blocking for approval and typed-history clearance; raw machine grammar unchanged.
 
 - [x] Preserve exact native-reported image-alt, reference-link and malformed-link warnings; reject optional-pipe and quoted encoded companion rows as ambiguous clock/presentation evidence, with strict original-body hidden-row controls.
+
+- [x] Cover actual collapsed/shortcut reference links, optional titles, raw comment/HTML/entity ordering, malformed link literals, visible details summary ambiguity and existing footer state contradictions with negative-only projections.

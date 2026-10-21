@@ -132,9 +132,16 @@ function markdownLinkLabels(text) {
       if (text[labelEnd] === "[") brackets++;
       if (text[labelEnd] === "]") brackets--;
     }
+    const label = text.slice(index + 1, labelEnd - 1);
+    const labelReference = label.trim().replace(/\s+/g, " ").toLowerCase();
+    if (!brackets && text[labelEnd] !== "[" && text[labelEnd] !== "(" && references.has(labelReference)) {
+      result += label;
+      index = labelEnd;
+      continue;
+    }
     if (!brackets && text[labelEnd] === "[") {
       const referenceEnd = text.indexOf("]", labelEnd + 1);
-      const reference = text.slice(labelEnd + 1, referenceEnd).trim().replace(/\s+/g, " ").toLowerCase();
+      const reference = text.slice(labelEnd + 1, referenceEnd).trim().replace(/\s+/g, " ").toLowerCase() || labelReference;
       if (referenceEnd >= 0 && references.has(reference)) {
         result += text.slice(index + 1, labelEnd - 1);
         index = referenceEnd + 1;
@@ -142,14 +149,17 @@ function markdownLinkLabels(text) {
       }
     }
     if (brackets || text[labelEnd] !== "(") { result += text[index++]; continue; }
-    let destinationEnd = labelEnd + 1, parentheses = 1;
+    let destinationEnd = labelEnd + 1, parentheses = 1, titleQuote = null;
     for (; destinationEnd < text.length && parentheses; destinationEnd++) {
       if (text[destinationEnd] === "\\") { destinationEnd++; continue; }
+      const character = text[destinationEnd];
+      if (titleQuote) { if (character === titleQuote) titleQuote = null; continue; }
+      if ((character === '"' || character === "'") && /\s/.test(text[destinationEnd - 1])) { titleQuote = character; continue; }
       if (text[destinationEnd] === "(") parentheses++;
       if (text[destinationEnd] === ")") parentheses--;
     }
     const destination = text.slice(labelEnd + 1, destinationEnd - 1);
-    if (parentheses || /\s/.test(destination)) { result += text[index++]; continue; }
+    if (parentheses || /\\([^\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e])/.test(destination) || !/^(?:<[^<>\s]*>|(?:\\.|[^\s<>])+)(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?\s*$/.test(destination)) { result += text[index++]; continue; }
     result += text.slice(index + 1, labelEnd - 1);
     index = destinationEnd;
   }
@@ -166,7 +176,7 @@ function htmlVisibleText(text, inlineBoundary) {
       index = end < 0 ? text.length : end + 3;
       continue;
     }
-    const tag = text.slice(index).match(/^<\/?([a-z][a-z0-9:-]*)(?=[\s/>])/i);
+    const tag = text.slice(index).match(/^<\/?([a-z][a-z0-9-]*)(?=[\s/>])/i);
     if (!tag) { result += text[index++]; continue; }
     let end = index + tag[0].length, quote = null;
     for (; end < text.length; end++) {
@@ -188,18 +198,21 @@ function htmlVisibleText(text, inlineBoundary) {
 }
 
 function visibleReviewText(body, inlineBoundary = "") {
-  const decoded = String(body || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
+  // Structural parsing uses raw bytes: entities cannot create quotes, tags or links.
+  const commentsRemoved = String(body || "").replace(/<!--[\s\S]*?(?:-->|$)/g,
+    (comment) => comment.replace(/[^\r\n]/g, ""));
+  const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary));
+  return rendered.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
-  }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity);
-  return htmlVisibleText(markdownLinkLabels(decoded), inlineBoundary)
+  }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity)
     .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
 export function containsBlockingSeverity(body, agent) {
   const text = agent === "codex" ? visibleReviewText(body) : String(body || "");
   if (agent === "codex") {
-    return /\bP[0-2]\b|\bdo not merge\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
+    return /\bP[0-2]\b|\bdo not merge\b|\bfound (?:some |major |any )?(?:issues|findings)\b|\bsecurity review failed\b|\breview pending\b|\bchanges requested\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
   }
   if (agent === "gemini") {
     return /\b(critical|high)\b/i.test(text);
@@ -523,7 +536,7 @@ export function hasUnclearedTypedFindings(comments, headSha, requestMarker, conf
 
 // Ambiguous rendered table rows invalidate clocks; they never grant evidence.
 function isReviewRowCandidate(line, title) {
-  return line.includes("|") && visibleReviewText(line).includes(title.replaceAll("*", ""));
+  return line.includes("|") && visibleReviewText(line).toLowerCase().includes(title.replaceAll("*", "").toLowerCase());
 }
 
 function sectionCompletionBucket(comment, kind, headSha = null) {
