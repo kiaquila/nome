@@ -34,3 +34,5 @@ Final mandatory preflight passed: 105 Python and 42 Node tests. Bounded independ
 Canonical finding clocks require the visible section commit to match the typed full head; mismatches fall back to observation time. Matching native P1 regression and mandatory preflight passed (105 Python, 43 Node tests).
 
 Completed typed negative observations use their own strict canonical section clock independently of classifier outcome. Historical extraction accepts multiline JSON and unrelated HTML comments while rejecting duplicate protocol markers/schema. Once a strictly newer section completion clears a finding, its old malformed rendering cannot retain a veto; running-section observations remain active. Final mandatory preflight passed: 105 Python, 46 Node tests; independent bounded review cleared.
+
+Malformed completed companions retain a separate observation-time invalidation even after an old finding is resolved. Each companion row is checked against its own typed SHA; a matching foreign-head completed companion remains valid. Paired actual evaluator controls and mandatory preflight passed: 105 Python, 47 Node tests.

@@ -146,7 +146,7 @@ function codeCompletionTime(comment) {
 export function verdictTime(comment, result) {
   {
     const state = validatedTypedState(comment);
-    if (state && Object.values(state).every((review) => review.status === null || review.status === "completed")) {
+    if (state && validFindingCompanions(comment, state, Object.values(state).find((review) => review.has_any_findings || review.has_unresolved_findings)?.commit_sha)) {
       const clocks = ["code_review", "security_review"].filter((kind) =>
         state[kind].has_any_findings === true || state[kind].has_unresolved_findings === true
       ).map((kind) => state[kind].status === "completed" && canonicalSectionClear(comment,
@@ -303,7 +303,7 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
         !(result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
           hasUnclearedTypedFindings(comments, headSha, requestMarker, config))) result = null;
     if (result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
-        Object.values(validatedTypedState(comment)).every((review) => review.status === null || review.status === "completed") &&
+        validFindingCompanions(comment, validatedTypedState(comment), headSha) &&
         !hasUnclearedTypedFindings(comments, headSha, requestMarker, config)) result = "neutral";
     if (result === "pass" && !isAfterRequest(comment, requestMarker, verdictTime(comment, result))) result = null;
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
@@ -465,4 +465,17 @@ function canonicalSectionClear(comment, state, kind, headSha, config) {
       ? line.replace(/(?:🛡️|🔒) \*\*Security Review\*\*/, "📝 **Code Review**") : line).join("\n");
   return classifyCodexSummaryComment({ ...comment, body: projected }, headSha,
     { requestedAt: "1970-01-01T00:00:00Z" }, config) === "pass";
+}
+
+
+// A resolved own-section finding cannot erase a newer invalid companion.
+function validFindingCompanions(comment, state, headSha) {
+  return Object.entries(state).every(([kind, review]) => {
+    const title = kind === "security_review" ? "**Security Review**" : "**Code Review**";
+    if (Object.values(review).every((value) => value === null)) return !String(comment.body || "").split(/\r?\n/).some((line) => line.startsWith("|") && line.includes(title));
+    if (review.status !== "completed") return false;
+    if (review.has_any_findings || review.has_unresolved_findings) return true;
+    return review.has_any_findings === false && review.has_unresolved_findings === false &&
+      canonicalSectionClear(comment, state, kind, review.commit_sha, {});
+  });
 }

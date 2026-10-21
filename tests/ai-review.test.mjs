@@ -698,3 +698,13 @@ test('canonical later security clear retires mismatched historical finding rende
   const clear = comment(summary({}, completed) + row(later), { updated_at: later });
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clear] })), 'pass');
 });
+
+
+test('invalid completed companion retains newer observation after finding resolution', async () => {
+  const sec = { ...completed, commit_sha: other };
+  const row = '\n| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="' + later + '">' + later + '</relative-time> | `2667f79` | Manual request |';
+  const old = comment(summary({ has_any_findings: true }, sec).replaceAll(after, before) + row, { created_at: before, updated_at: later });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary())] })), 'pass');
+  const valid = { ...old, body: old.body.replace(row, row.replace('`2667f79`', '`aaaaaaa`')) };
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, valid, comment(summary())] })), 'pass');
+});
