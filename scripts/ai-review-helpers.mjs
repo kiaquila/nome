@@ -140,7 +140,7 @@ function validMarkdownDestination(raw, allowEmpty = true) {
 }
 
 function validReferenceLabel(label) {
-  if (label.startsWith("^") || label.length > 999 || !/[^ \t\r\n\f\v]/.test(label) || /\n[ \t\f\v]*\n/.test(label.replace(/\r\n?/g, "\n"))) return false;
+  if (label.length > 999 || !/[^ \t\r\n\f\v]/.test(label) || /\n[ \t\f\v]*\n/.test(label.replace(/\r\n?/g, "\n"))) return false;
   for (let index = 0; index < label.length; index++) {
     if (label[index] === "\\" && /[!-/:-@[-`{-~]/.test(label[index + 1] || "")) { index++; continue; }
     if (label[index] === "[" || label[index] === "]") return false;
@@ -148,7 +148,7 @@ function validReferenceLabel(label) {
   return true;
 }
 
-function markdownLinkLabels(text, knownReferences = null, onLink = null) {
+function markdownLinkLabels(text, knownReferences = null, onLink = null, codeLiterals = []) {
   const references = knownReferences || new Set();
   if (!knownReferences) {
     const lines = text.split(/\r\n|\r|\n/);
@@ -156,23 +156,42 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null) {
     const footnoteDefinitions = new Map();
     for (let index = 0; index < lines.length; index++) {
       const definition = lines[index].match(/^ {0,3}\[\^([^\]\n]+)\]:[ \t]*(.*)$/);
-      if (definition && validReferenceLabel(definition[1])) footnoteDefinitions.set(index, definition[1].toLowerCase());
+      if (definition && validReferenceLabel(definition[1]) && !/[ \t\r\n\f\v]/.test(definition[1])) footnoteDefinitions.set(index, definition[1].toLowerCase());
     }
-    const footnoteSource = lines.map((line, index) => footnoteDefinitions.has(index) ? "" : line).join("\n");
+    const footnoteLines = new Map();
+    const ownedFootnoteLines = new Set(footnoteDefinitions.keys());
+    for (const [index] of footnoteDefinitions) {
+      const owned = [index];
+      for (let next = index + 1; next < lines.length && !footnoteDefinitions.has(next); next++) {
+        const literal = lines[next].match(/^\uE002(\d+)\uE003$/);
+        if (!/^[ \t]+\S/.test(lines[next]) && !(literal && /^(?: {4}|\t)/.test(codeLiterals[Number(literal[1])] || ""))) break;
+        owned.push(next); ownedFootnoteLines.add(next);
+      }
+      footnoteLines.set(index, owned);
+    }
+    const footnoteSource = lines.map((line, index) => ownedFootnoteLines.has(index) ? "" : line).join("\n");
     const usedFootnotes = new Set();
-    for (let index = 0; index < footnoteSource.length; index++) {
-      if (!footnoteSource.startsWith("[^", index)) continue;
-      let escaped = 0;
-      for (let previous = index - 1; previous >= 0 && footnoteSource[previous] === "\\"; previous--) escaped++;
-      if (escaped % 2) continue;
-      const end = footnoteSource.indexOf("]", index + 2);
-      if (end >= 0) usedFootnotes.add(footnoteSource.slice(index + 2, end).toLowerCase());
-    }
-    for (const [index, label] of footnoteDefinitions) if (!usedFootnotes.has(label)) lines[index] = "";
+    const collectFootnotes = (source) => {
+      for (let index = 0; index < source.length; index++) {
+        if (!source.startsWith("[^", index)) continue;
+        let escaped = 0;
+        for (let previous = index - 1; previous >= 0 && source[previous] === "\\"; previous--) escaped++;
+        if (escaped % 2) continue;
+        const end = source.indexOf("]", index + 2);
+        if (end >= 0) usedFootnotes.add(source.slice(index + 2, end).toLowerCase());
+      }
+    };
+    collectFootnotes(footnoteSource);
+    let priorSize;
+    do {
+      priorSize = usedFootnotes.size;
+      for (const [index, label] of footnoteDefinitions) if (usedFootnotes.has(label)) collectFootnotes(footnoteLines.get(index).map((line) => lines[line].replace(/\uE002(\d+)\uE003/g, (_, slot) => /^(?: {4}|\t)/.test(codeLiterals[Number(slot)] || "") ? codeLiterals[Number(slot)] : "")).join("\n"));
+    } while (usedFootnotes.size !== priorSize);
+    for (const [index, label] of footnoteDefinitions) if (!usedFootnotes.has(label)) for (const line of footnoteLines.get(index)) lines[line] = "";
 
     for (let index = 0; index < lines.length; index++) {
       const definition = lines[index].match(/^ {0,3}\[([^\]\n]+)\]:[ \t\f\v]*(.*)$/);
-      if (!definition || !validReferenceLabel(definition[1])) continue;
+      if (!definition || !validReferenceLabel(definition[1]) || footnoteDefinitions.has(index)) continue;
       const destinationIndex = definition[2] ? index : index + 1;
       let destination = definition[2] || (/^ {0,3}\S/.test(lines[destinationIndex] || "") ? lines[destinationIndex] : "");
       let valid = validMarkdownDestination(destination, false), consumed = destinationIndex;
@@ -284,6 +303,7 @@ function htmlVisibleText(text, inlineBoundary, literals = [], rawBlock = false) 
     }
     if (end === text.length) { result += text.slice(index); break; }
     if (!rawBlock && text[index + 1] === "/" && !/^<\/[A-Za-z][A-Za-z0-9-]*[ \t\r\n\f]*>$/.test(text.slice(index, end + 1))) { result += text.slice(index, end + 1); index = end + 1; continue; }
+    if (!rawBlock && text[index + 1] !== "/" && !/^<[A-Za-z][A-Za-z0-9-]*(?:[ \t\r\n\f]+[A-Za-z_:][A-Za-z0-9_.:-]*(?:[ \t\r\n\f]*=[ \t\r\n\f]*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*[ \t\r\n\f]*\/?>$/.test(text.slice(index, end + 1))) { result += text.slice(index, end + 1); index = end + 1; continue; }
     if (["code", "pre"].includes(tag[1].toLowerCase()) && text[index + 1] !== "/") {
       const closing = new RegExp("</" + tag[1] + "[ \t\r\n]*>", "i").exec(text.slice(end + 1));
       const closeAt = closing ? end + 1 + closing.index : text.length;
@@ -354,9 +374,13 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
     else if (/^ {0,3}<!\[CDATA\[/.test(line)) terminator = /\]\]>/;
     const blankEnded = !terminator && (blockTag.test(line) || ((!index || !peel(lines[index - 1]).trim()) && completeTag.test(line)));
     if (!terminator && !blankEnded) continue;
+    const quoteDepth = (value) => (value.match(/^(?: {0,3}>[ \t]?)+/)?.[0].match(/>/g) || []).length;
+    const depth = quoteDepth(lines[index]);
+    const listPrefix = lines[index].match(/^(?: {0,3}>[ \t]?)*([ \t]*)(?:[-+*]|[0-9]{1,9}[.)])[ \t]+/);
+    const withinContainer = (value) => quoteDepth(value) >= depth && (!listPrefix || /^\s*$/.test(value) || value.length - value.trimStart().length >= listPrefix[0].length);
     let end = index;
-    if (terminator) { while (end < lines.length - 1 && !terminator.test(lines[end])) end++; }
-    else { while (end + 1 < lines.length && peel(lines[end + 1]).trim()) end++; }
+    if (terminator) { while (end < lines.length - 1 && !terminator.test(lines[end]) && withinContainer(lines[end + 1])) end++; }
+    else { while (end + 1 < lines.length && withinContainer(lines[end + 1]) && peel(lines[end + 1]).trim()) end++; }
     const visible = htmlVisibleText(lines.slice(index, end + 1).join("\n"), inlineBoundary, literals, true)
       .replace(/\uE000(\d+)\uE001/g, (_, slot) => literals[Number(slot)]);
     const decoded = visible.replace(/&#(x[0-9a-f]+|[0-9]+);?/gi, (entity, value) => {
@@ -380,7 +404,7 @@ function visibleReviewText(body, inlineBoundary = "") {
   const protectedCode = protectMarkdownCode(htmlProtected, markdownLiterals);
   const commentsRemoved = protectedCode.replace(/<!--[\s\S]*?(?:-->|$)/g,
     (comment) => comment.replace(/[^\r\n]/g, ""));
-  const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary, literals))
+  const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary, literals), null, null, markdownLiterals)
     .replace(/\uE000(\d+)\uE001/g, (_, index) => literals[Number(index)]);
   return rendered.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
