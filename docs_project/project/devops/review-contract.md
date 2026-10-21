@@ -83,3 +83,5 @@ Footnote use graphs follow rendered inline labels and contents, including transi
 Raw HTML continuation follows the ordered Markdown container stack, preserving both quote-before-list and list-before-quote nesting.
 
 Official GitHub rendering retains the outer destination for an angle autolink inside a Markdown link label; it does not expose that destination as warning text. Indefinite finding statements remain contrary evidence independently of reporting verbs within a paragraph; separate paragraphs do not form one statement.
+
+Footnote identifiers use Unicode 16.0 full case folding, with a shared generated exception table and per-code-point lowercase fallback; protocol bytes and canonical state fields are unchanged.
