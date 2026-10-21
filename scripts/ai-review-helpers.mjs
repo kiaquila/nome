@@ -295,6 +295,11 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
   return comments.map((comment) => {
     let result = classifyCodexSummaryComment(comment, headSha, requestMarker, config);
     const unrecognized = result === null;
+    // Historical observations cannot veto a new request; validated finding
+    // history is retained independently until its own section is cleared.
+    if (result !== "pass" && !isAfterRequest(comment, requestMarker) &&
+        !(result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
+          hasUnclearedTypedFindings(comments, headSha, requestMarker, config))) result = null;
     if (result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
         canonicalTypedRowsAgree(comment, validatedTypedState(comment), headSha) &&
         !hasUnclearedTypedFindings(comments, headSha, requestMarker, config)) result = "neutral";
@@ -415,17 +420,18 @@ export function hasUnclearedTypedFindings(comments, headSha, requestMarker, conf
     return !evidence.some((clean) => {
       const next = clean.state[kind];
       return next.commit_sha === headSha && next.status === "completed" && next.has_any_findings === false &&
-        next.has_unresolved_findings === false && canonicalTypedRowsAgree(clean.comment, clean.state, headSha) &&
-        sectionCompletionBucket(clean.comment, kind) > findingAt;
+        next.has_unresolved_findings === false && canonicalSectionClear(clean.comment, clean.state, kind, headSha, config) && sectionCompletionBucket(clean.comment, kind, headSha) > findingAt;
     });
   }));
 }
 
 
-function sectionCompletionBucket(comment, kind) {
+function sectionCompletionBucket(comment, kind, headSha = null) {
   const title = kind === "security_review" ? "**Security Review**" : "**Code Review**";
   const rows = String(comment.body || "").split(/\r?\n/).filter((line) => line.startsWith("|") && line.includes(title));
   if (rows.length !== 1) return NaN;
+  const cells = rows[0].split("|").map((cell) => cell.trim());
+  if (cells.length !== 6 || (headSha && cells[3] !== "`" + headSha.slice(0, 7) + "`")) return NaN;
   const match = rows[0].match(/\| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \|/);
   const value = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
   const updated = Date.parse(comment.updated_at || comment.created_at || "");
@@ -442,4 +448,19 @@ function canonicalTypedRowsAgree(comment, state, headSha) {
   const match = body.match(/^<!-- codex-pull-request-review-summary -->\s*<!-- codex-review-state:v1 (\{[^\n]+\}) -->\s*## Codex Review Summary(?:\s|$)/);
   return !!match && renderedSummaryAgrees(body.slice(match[0].length).trim(), state, headSha,
     { requestedAt: "1970-01-01T00:00:00Z" });
+}
+
+
+function canonicalSectionClear(comment, state, kind, headSha, config) {
+  const target = kind === "security_review" ? "**Security Review**" : "**Code Review**";
+  const absent = { commit_sha: null, has_any_findings: null, has_unresolved_findings: null, status: null };
+  const body = String(comment.body || "").trim();
+  const projected = body.replace(/<!-- codex-review-state:v1 .*? -->/s,
+    "<!-- codex-review-state:v1 " + JSON.stringify({ code_review: state[kind], security_review: absent }) + " -->")
+    .split(/\r?\n/).filter((line) => !line.startsWith("|") ||
+      (!line.includes("**Code Review**") && !line.includes("**Security Review**")) || line.includes(target))
+    .map((line) => line.includes(target) && kind === "security_review"
+      ? line.replace(/(?:🛡️|🔒) \*\*Security Review\*\*/, "📝 **Code Review**") : line).join("\n");
+  return classifyCodexSummaryComment({ ...comment, body: projected }, headSha,
+    { requestedAt: "1970-01-01T00:00:00Z" }, config) === "pass";
 }

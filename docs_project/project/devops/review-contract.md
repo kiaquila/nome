@@ -25,3 +25,5 @@ Validated typed findings persist across repeated requests until a strictly newer
 Completed typed finding observations use the affected section's own valid canonical completion time for ordering as well as clearance. Unrelated summary edits cannot renew an old finding; absent, invalid or running section clocks use the observation edit time conservatively.
 
 Historical canonical resolution is independent of later request markers: a repeated request cannot revive an already cleared finding. Current code approval still requires fresh evidence after the active request.
+
+Historical resolution uses the affected section projected into the strict canonical parser, retaining all visible non-row prose. Unrelated section activity cannot block resolution; contradictory prose cannot clear findings. New-request approval remains separately request-bound. Final regression coverage includes historical full/partial resolution and contradictory clears.

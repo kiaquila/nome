@@ -111,7 +111,7 @@ test("latest mutable summary uses updated_at and retains negative evidence acros
   assert.equal(latestCodexSummaryResult([updated], head, marker), "pass");
   assert.equal(latestCodexSummaryResult([comment(receipt), comment(summary({ has_any_findings: true }), { created_at: before, updated_at: later })], head, marker), "fail");
   assert.equal(latestCodexSummaryResult([comment(summary({ has_any_findings: true }), { updated_at: before })], head, marker), "fail");
-  assert.equal(latestCodexSummaryResult([comment(summary(), { created_at: before, updated_at: before })], head, marker), "pending");
+  assert.equal(latestCodexSummaryResult([comment(summary(), { created_at: before, updated_at: before })], head, marker), null);
   assert.equal(latestCodexSummaryResult([updated], head, marker, {}, [{ event: "committed", created_at: after }]), null);
 });
 
@@ -645,4 +645,22 @@ test('historical canonical resolution survives a repeated request', async () => 
   const old = comment(summary({ has_any_findings: true }).replaceAll(after, oldTime), { created_at: oldTime, updated_at: oldTime });
   const clean = comment(summary().replaceAll(after, clearTime), { created_at: clearTime, updated_at: clearTime });
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clean], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+});
+
+
+test('historical section resolution does not require unrelated section completion', async () => {
+  const oldTime = '2026-10-14T23:00:00Z', clearTime = '2026-10-15T00:30:00Z';
+  const old = comment(summary({ has_any_findings: true }).replaceAll(after, oldTime), { created_at: oldTime, updated_at: oldTime });
+  const clear = comment(summary({}, { ...completed, status: 'running' }).replaceAll(after, clearTime), { created_at: clearTime, updated_at: clearTime });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+});
+
+
+test('contradictory historical section clear does not erase typed history', async () => {
+  const oldTime = '2026-10-14T23:00:00Z', clearTime = '2026-10-15T00:30:00Z';
+  const old = comment(summary({ has_any_findings: true }).replaceAll(after, oldTime), { created_at: oldTime, updated_at: oldTime });
+  for (const extra of ['Found P1 issues.', 'Security review failed.']) {
+    const clear = comment(summary().replaceAll(after, clearTime) + '\n' + extra, { created_at: clearTime, updated_at: clearTime });
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, clear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  }
 });
