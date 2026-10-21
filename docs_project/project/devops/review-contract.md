@@ -73,3 +73,5 @@ Optional-semicolon numeric character references are interpreted only in raw HTML
 Raw HTML context detection peels the existing Markdown quote/list container prefixes. Finding-statement negation applies per finding clause: a zero count in one section cannot hide a positive finding in another. GitHub tagfilter preserves visible script/style text as escaped markup; it must not be discarded.
 
 Referenced footnote contents remain visible evidence; unused definitions are omitted only in Markdown contexts, with code and raw HTML contexts kept distinct. ordinary link destinations are suppressed only within GitHub’s balanced nesting limit. Malformed closing tags remain literal in Markdown but use HTML parsing inside raw blocks. Collapsed details remain non-authoritative across blank lines, independently of Markdown block termination. Existential issue statements retain the existing finding veto.
+
+Positive numeric counts attached to issue, finding, or problem nouns remain contrary evidence independently of the reporting verb; zero/no-only statements retain their clean meaning.

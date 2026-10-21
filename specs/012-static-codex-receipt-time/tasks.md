@@ -114,3 +114,5 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Preserve raw HTML warnings inside quote/list containers and mixed zero/positive finding clauses; retain renderer-verified script/style visible evidence.
 
 - [x] Cover actual footnotes, destination nesting limits, contextual malformed closing tags, blank-separated collapsed completion rows and existential finding statements.
+
+- [x] Cover actual affirmative numeric count contradictions independently of reporting verbs, preserving zero/no-only controls.
