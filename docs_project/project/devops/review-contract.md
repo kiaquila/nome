@@ -20,6 +20,8 @@ Structured code approval uses the mandatory unique matching-head Code Review row
 
 Positive static receipt/legacy evidence uses immutable `created_at` for request freshness and ordering. Editing positive text cannot renew an old approval or overtake later pending state. Invalidating evidence continues to use edit time.
 
-Validated typed findings persist across repeated requests until a strictly newer canonical completion explicitly clears the affected review section. Security findings require a matching current-head security row with its own valid completion datetime after the finding and request; fresh code completion, absent security state, stale security time or formal approval alone cannot clear that section. Native findings and unresolved threads retain their vetoes.
+Validated typed findings persist across repeated requests until a strictly newer canonical completion explicitly clears the affected review section. Security findings require a matching current-head security row with its own valid completion datetime after the finding; fresh code completion, absent security state, stale security time or formal approval alone cannot clear that section. Native findings and unresolved threads retain their vetoes.
 
 Completed typed finding observations use the affected section's own valid canonical completion time for ordering as well as clearance. Unrelated summary edits cannot renew an old finding; absent, invalid or running section clocks use the observation edit time conservatively.
+
+Historical canonical resolution is independent of later request markers: a repeated request cannot revive an already cleared finding. Current code approval still requires fresh evidence after the active request.

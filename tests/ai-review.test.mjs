@@ -626,3 +626,23 @@ test('security finding clock ignores unrelated newer code completion edits', asy
   const clean = comment(summary({}, completed) + securityRow(after));
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clean] })), 'pass');
 });
+
+
+test('security clearance is independent of stale code completion and orders its own finding', async () => {
+  const row = (time) => '\n| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="' + time + '">' + time + '</relative-time> | `2667f79` | Manual request |';
+  const findingAt = '2026-10-15T02:30:00Z';
+  const old = comment(summary({}, { ...completed, has_any_findings: true, has_unresolved_findings: true }) + row(findingAt), { updated_at: findingAt });
+  const clean = comment(summary({}, completed) + row(later), { updated_at: later });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clean] })), 'pass');
+  const staleCode = { ...clean, body: clean.body.replaceAll(after, before) };
+  const historical = { ...old, body: old.body.replaceAll(after, before) };
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, historical, staleCode, comment(receipt, { created_at: '2026-10-15T02:45:00Z', updated_at: '2026-10-15T02:45:00Z' })] })), 'pass');
+});
+
+
+test('historical canonical resolution survives a repeated request', async () => {
+  const oldTime = '2026-10-14T23:00:00Z', clearTime = '2026-10-15T00:30:00Z';
+  const old = comment(summary({ has_any_findings: true }).replaceAll(after, oldTime), { created_at: oldTime, updated_at: oldTime });
+  const clean = comment(summary().replaceAll(after, clearTime), { created_at: clearTime, updated_at: clearTime });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, clean], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+});

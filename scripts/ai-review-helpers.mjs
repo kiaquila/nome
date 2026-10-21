@@ -146,7 +146,7 @@ function codeCompletionTime(comment) {
 export function verdictTime(comment, result) {
   if (result === "fail") {
     const state = validatedTypedState(comment);
-    if (state) {
+    if (state && Object.values(state).every((review) => review.status === null || review.status === "completed")) {
       const clocks = ["code_review", "security_review"].filter((kind) =>
         state[kind].has_any_findings === true || state[kind].has_unresolved_findings === true
       ).map((kind) => state[kind].status === "completed" ? sectionCompletionBucket(comment, kind) : NaN);
@@ -154,7 +154,7 @@ export function verdictTime(comment, result) {
     }
   }
 
-  return result === "pass" && String(comment?.body || "").trim().startsWith(summaryMarker)
+  return ["pass", "neutral"].includes(result) && String(comment?.body || "").trim().startsWith(summaryMarker)
     ? codeCompletionTime(comment) : result === "pass" ? comment?.created_at : comment?.updated_at || comment?.created_at;
 }
 
@@ -258,7 +258,7 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
         security.has_any_findings !== false || security.has_unresolved_findings !== false)) return "fail";
     // Additional native rendered content may contain findings; require its
     // explicit verdict to agree, rather than trusting a heading or Completed.
-    if (!renderedSummaryAgrees(rendered, state, headSha, requestMarker)) return "pending";
+    if (!renderedSummaryAgrees(rendered, state, headSha, requestMarker)) return canonicalTypedRowsAgree(comment, state, headSha) ? "neutral" : "pending";
     return codeCompletionTime(comment) ? "pass" : "pending";
   }
 
@@ -295,6 +295,9 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
   return comments.map((comment) => {
     let result = classifyCodexSummaryComment(comment, headSha, requestMarker, config);
     const unrecognized = result === null;
+    if (result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
+        canonicalTypedRowsAgree(comment, validatedTypedState(comment), headSha) &&
+        !hasUnclearedTypedFindings(comments, headSha, requestMarker, config)) result = "neutral";
     if (result === "pass" && !isAfterRequest(comment, requestMarker, verdictTime(comment, result))) result = null;
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
     if (result === "pass" && hasHeadUpdateBetweenTimestamps(timeline, triggerAt, reviewEvidenceTimestamp(comment))) result = null;
@@ -412,9 +415,8 @@ export function hasUnclearedTypedFindings(comments, headSha, requestMarker, conf
     return !evidence.some((clean) => {
       const next = clean.state[kind];
       return next.commit_sha === headSha && next.status === "completed" && next.has_any_findings === false &&
-        next.has_unresolved_findings === false && classifyCodexSummaryComment(clean.comment, headSha, requestMarker, config) === "pass" &&
-        sectionCompletionBucket(clean.comment, kind) > findingAt &&
-        sectionCompletionBucket(clean.comment, kind) > Math.floor(Date.parse(requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || "") / 1000);
+        next.has_unresolved_findings === false && canonicalTypedRowsAgree(clean.comment, clean.state, headSha) &&
+        sectionCompletionBucket(clean.comment, kind) > findingAt;
     });
   }));
 }
@@ -430,4 +432,14 @@ function sectionCompletionBucket(comment, kind) {
   return Number.isFinite(value) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(match[1]) &&
     new Date(value).toISOString().slice(0, 19) === match[1].slice(0, 19) &&
     value <= updated + 999 ? Math.floor(value / 1000) : NaN;
+}
+
+
+function canonicalTypedRowsAgree(comment, state, headSha) {
+  if (!state || Object.values(state).some((review) => review.status !== null &&
+      (review.status !== "completed" || review.commit_sha !== headSha))) return false;
+  const body = String(comment.body || "").trim();
+  const match = body.match(/^<!-- codex-pull-request-review-summary -->\s*<!-- codex-review-state:v1 (\{[^\n]+\}) -->\s*## Codex Review Summary(?:\s|$)/);
+  return !!match && renderedSummaryAgrees(body.slice(match[0].length).trim(), state, headSha,
+    { requestedAt: "1970-01-01T00:00:00Z" });
 }
