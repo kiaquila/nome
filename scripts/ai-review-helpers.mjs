@@ -118,13 +118,15 @@ export function latestAiReviewRequestMarker(comments = [], agent, headSha) {
 
 // Project formatting only for visible contradiction checks. Protocol evidence
 // continues to use its original bytes and strict grammar.
+// HTML5 named whitespace/format entities (standard HTML entity names).
+const htmlSpacingEntities = {"ApplyFunction": "\u2061", "InvisibleComma": "\u2063", "InvisibleTimes": "\u2062", "MediumSpace": "\u205f", "NegativeMediumSpace": "\u200b", "NegativeThickSpace": "\u200b", "NegativeThinSpace": "\u200b", "NegativeVeryThinSpace": "\u200b", "NewLine": "\n", "NoBreak": "\u2060", "NonBreakingSpace": "\u00a0", "Tab": "\t", "ThickSpace": "\u205f\u200a", "ThinSpace": "\u2009", "VeryThinSpace": "\u200a", "ZeroWidthSpace": "\u200b", "af": "\u2061", "emsp": "\u2003", "emsp13": "\u2004", "emsp14": "\u2005", "ensp": "\u2002", "hairsp": "\u200a", "ic": "\u2063", "it": "\u2062", "lrm": "\u200e", "nbsp": "\u00a0", "numsp": "\u2007", "puncsp": "\u2008", "rlm": "\u200f", "shy": "\u00ad", "thinsp": "\u2009", "zwj": "\u200d", "zwnj": "\u200c"};
 function visibleReviewText(body) {
   return String(body || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
-  }).replace(/&(?:MediumSpace|hairsp);/gi, " ")
+  }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity)
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/<\/?(?:strong|em)\b[^>]*>/gi, "")
-    .replace(/\p{Cf}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
+    .replace(/\bdo[\s\p{Cf}]+not[\s\p{Cf}]+merge\b/giu, "Do not merge").replace(/\p{Cf}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
 export function containsBlockingSeverity(body, agent) {

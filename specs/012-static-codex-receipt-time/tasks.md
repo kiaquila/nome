@@ -68,3 +68,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 16:46 actual native counterparts: rendered link-label/inline-HTML/Cf warnings in permitted informational footers remain blocking. Completion rows inside collapsed informational details cannot grant approval or clear history (HA corrected visible-row collection; Nome already rejected). Exact production-path controls cover approval and clearance.
 
 16:46 consolidated corrections passed mandatory preflight: 105 Python and 57 Node tests; independent bounded reviewer cleared rendered-footer and collapsed-row controls.
+
+16:51 actual counterparts: use the standard HTML5 whitespace/format entity map without dependencies; zero-width word separators cannot conceal the existing Do not merge warning. Exact ThinSpace/ZeroWidthSpace/numeric-zero-width controls pass. Indent-then-BOM protocol marker remains rejected by the existing raw envelope guard.
+
+16:51 consolidated corrections passed mandatory preflight: 105 Python and 57 Node tests; exact native counterpart regressions pass.
