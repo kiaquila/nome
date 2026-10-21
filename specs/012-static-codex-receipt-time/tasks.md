@@ -42,3 +42,5 @@ Typed negative ordering is bound to the active full head and preserves configure
 Protocol-prefix detection is case-insensitive before unrelated HTML comment normalization: case-varied unknown Codex markers stay malformed and cannot clear historical findings. Final mandatory preflight passed: 105 Python, 50 Node tests.
 
 Official marker discovery is case-insensitive. Indented protocol examples in later finding presentation do not erase genuine leading evidence. Partial resolution validates any visible counterpart row before removing it, including inactive-section warnings; canonical Running rows remain supported. Mandatory preflight passed: 105 Python, 51 Node tests; independent bounded A/B/C review cleared.
+
+Native BOM follow-up: normalize U+FEFF before examining leading protocol indentation, so BOM-prefixed Markdown examples cannot approve, create findings, or clear history. Actual evaluator regressions cover four spaces and tabs; mandatory preflight passed (105 Python, 51 Node tests).

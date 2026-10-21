@@ -714,7 +714,7 @@ test('foreign-only negative edits remain observations and indented protocol is n
   const old = comment(summary({ commit_sha: other, has_any_findings: true }).replaceAll('`2667f79`', '`aaaaaaa`').replaceAll(after, before), { created_at: before, updated_at: later });
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary())] })), 'pass');
   for (const prefix of [' ', '  ', '   ']) assert.equal(classify(summary().replace(/^<!-- codex-/gm, prefix + '<!-- codex-')), 'pass');
-  for (const prefix of ['    ', '\t']) {
+  for (const prefix of ['    ', '\t', '\uFEFF    ', '\uFEFF\t']) {
     const example = comment(summary({ has_any_findings: true }).replace(/^<!-- codex-/gm, prefix + '<!-- codex-').replaceAll(after, before), { created_at: before, updated_at: before });
     assert.equal(await evaluate(evidenceApi({ comments: [markerComment, example], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
     assert.notEqual(classify(summary().replace(/^<!-- codex-/gm, prefix + '<!-- codex-')), 'pass');

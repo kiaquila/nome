@@ -487,7 +487,7 @@ function validFindingCompanions(comment, state, headSha, config = {}, allowResol
 
 
 function hasIndentedCodexEnvelope(body) {
-  const leading = String(body || "").match(/^(?:[ \t\r\n]*<!--[\s\S]*?-->)*[ \t\r\n]*/)?.[0] || "";
+  const leading = String(body || "").replace(/\uFEFF/g, "").match(/^(?:[ \t\r\n]*<!--[\s\S]*?-->)*[ \t\r\n]*/)?.[0] || "";
   return /^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/im.test(leading);
 }
 
