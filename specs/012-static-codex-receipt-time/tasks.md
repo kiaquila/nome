@@ -30,3 +30,5 @@ Actual native follow-up: clear affected security history independently of stale 
 Historical resolution uses the affected section projected into the strict canonical parser, retaining all visible non-row prose. Unrelated section activity cannot block resolution; contradictory prose cannot clear findings. New-request approval remains separately request-bound. Final regression coverage includes historical full/partial resolution and contradictory clears.
 
 Final mandatory preflight passed: 105 Python and 42 Node tests. Bounded independent review cleared canonical partial-section projection and retained visible contradiction guards.
+
+Canonical finding clocks require the visible section commit to match the typed full head; mismatches fall back to observation time. Matching native P1 regression and mandatory preflight passed (105 Python, 43 Node tests).

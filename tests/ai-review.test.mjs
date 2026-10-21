@@ -664,3 +664,10 @@ test('contradictory historical section clear does not erase typed history', asyn
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, clear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   }
 });
+
+
+test('mismatched visible finding head cannot lend an old clearance clock', async () => {
+  const old = comment(summary({ has_any_findings: true }).replaceAll(after, '2026-10-15T00:00:00Z').replaceAll('`' + head.slice(0, 7) + '`', '`aaaaaaa`'), { created_at: before, updated_at: later });
+  const clean = comment(summary(), { created_at: after, updated_at: after });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, clean] })), 'pass');
+});
