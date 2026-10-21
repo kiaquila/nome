@@ -811,3 +811,14 @@ test('code-indented heading and formatted warning triggers cannot approve', () =
   for (const prefix of ['    ', '\t']) assert.notEqual(classify(summary().replace('## Codex Review Summary', prefix + '## Codex Review Summary')), 'pass');
   for (const trigger of ['Do **not** merge', 'Do not&nbsp;merge']) assert.notEqual(classify(summary().replace('Manual request', trigger)), 'pass');
 });
+
+
+test('rendered footer warnings cannot approve or clear findings', async () => {
+  const time = '2026-10-14T23:00:00Z';
+  const old = comment(summary({ has_any_findings: true }).replaceAll(after, time), { created_at: time, updated_at: time });
+  for (const warning of ['P&#49; blocker', 'P*1* blocker', 'Do&#32;not&#32;merge']) {
+    const body = summary() + '\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n' + warning + '\n</details>';
+    assert.notEqual(classify(body), 'pass');
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  }
+});

@@ -39,3 +39,5 @@ Typed negative ordering is bound to the active full head and preserves configure
 Protocol-prefix detection is case-insensitive before unrelated HTML comment normalization: case-varied unknown Codex markers stay malformed and cannot clear historical findings. Final mandatory preflight passed: 105 Python, 50 Node tests.
 
 A strictly newer canonical same-section completion retires ordinary prose belonging to the resolved typed finding; raw negative prose and native unresolved findings retain their veto. Four-space/tab-indented summary headings are code examples, and visible review triggers must match the canonical request labels.
+
+Visible P0–P2 and explicit “Do not merge” warnings remain blocking inside permitted informational footers. Their visible-text check decodes numeric HTML entities and inline Markdown formatting; protocol markers, structured schema, commit identity and timestamps keep their original strict parsing. These warnings cannot establish approval or a structured finding clear.

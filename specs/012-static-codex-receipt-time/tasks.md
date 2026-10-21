@@ -56,3 +56,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 16:18 actual native counterparts: canonical newer structured completion clears post-request typed finding prose, while raw prose/equal-clock findings stay blocked. Code-indented headings supply no approval; formatted warning triggers cannot approve. Mixed-length fenced security counterparts remain rejected by the unchanged full-body parser.
 
 16:18 bounded corrections passed mandatory preflight: 105 Python, 56 Node tests; independent reviewer cleared exact recovery/heading/trigger controls.
+
+16:25 actual rendered-warning counterpart: strict trigger fields already reject encoded warnings, while permitted footer warnings needed visible numeric-entity/inline-format normalization. Exact P&#49;, P*1* and Do&#32;not&#32;merge approval/history-clear regressions pass; typed negative authority unchanged.
+
+16:25 rendered-warning corrections passed mandatory preflight: 105 Python, 57 Node tests; independent bounded reviewer cleared exact footer approval and history-clear cases.

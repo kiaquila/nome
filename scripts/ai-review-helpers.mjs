@@ -116,10 +116,19 @@ export function latestAiReviewRequestMarker(comments = [], agent, headSha) {
     )[0] || null;
 }
 
+// Project formatting only for visible contradiction checks. Protocol evidence
+// continues to use its original bytes and strict grammar.
+function visibleReviewText(body) {
+  return String(body || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
+    const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
+    return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
+  }).replace(/[*_~`]/g, "").replace(/\s+/g, " ");
+}
+
 export function containsBlockingSeverity(body, agent) {
-  const text = String(body || "");
+  const text = agent === "codex" ? visibleReviewText(body) : String(body || "");
   if (agent === "codex") {
-    return /\bP[0-2]\b/.test(text);
+    return /\bP[0-2]\b|\bdo not merge\b/i.test(text);
   }
   if (agent === "gemini") {
     return /\b(critical|high)\b/i.test(text);
