@@ -90,3 +90,5 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Cover actual collapsed/shortcut reference links, optional titles, raw comment/HTML/entity ordering, malformed link literals, visible details summary ambiguity and existing footer state contradictions with negative-only projections.
 
 - [x] Preserve warning labels in valid whitespace/empty-destination links while escaped openers and malformed destinations remain literal; verify raw HTML containers and unmatched closing tags cannot lend completion clocks or clear findings.
+
+- [x] Retain visible priorities in code-rendered literal link syntax; cover native code span, fenced block and raw code footer regressions.

@@ -47,3 +47,5 @@ Rendered review rows with a missing leading pipe or quoted/encoded labels invali
 Negative-only visible text removes raw comments while preserving line boundaries, tokenizes raw HTML attribute quoting, projects valid Markdown destinations and optional standard titles, then decodes character references. Decoded characters cannot manufacture HTML or Markdown structure; undefined reference labels remain literal counterevidence, and visible details summary rows remain ambiguous rather than gaining completion authority.
 
 Existing explicit finding, failed/pending review and changes-requested footer contradictions cannot approve or clear findings. Case-varied rendered review labels participate only in ambiguity detection; canonical original labels remain required for authoritative clocks.
+
+Link-label projection preserves code-rendered literal text in Markdown code spans/fences and raw code elements, so visible priority warnings inside literal link syntax remain counterevidence. This presentation handling grants no machine or completion-clock authority.

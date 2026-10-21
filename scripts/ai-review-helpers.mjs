@@ -125,6 +125,19 @@ function markdownLinkLabels(text) {
   const references = new Set([...text.matchAll(/^ {0,3}\[([^\]\n]+)\]:[ \t]*(?:<[^<>\s]+>|[^\s]+)(?:[ \t]+.*)?$/gm)].map((match) => match[1].trim().replace(/\s+/g, " ").toLowerCase()));
   let result = "";
   for (let index = 0; index < text.length;) {
+    const linePrefix = text.slice(text.lastIndexOf("\n", index - 1) + 1, index);
+    const fence = /^ {0,3}$/.test(linePrefix) && text.slice(index).match(/^(`{3,}|~{3,})[^\n]*(?:\n|$)/);
+    if (fence) {
+      const close = new RegExp("^ {0,3}" + fence[1][0] + "{" + fence[1].length + ",}[ \t]*$", "m").exec(text.slice(index + fence[0].length));
+      const end = close ? index + fence[0].length + close.index + close[0].length : text.length;
+      result += text.slice(index, end); index = end; continue;
+    }
+    if (text[index] === "`") {
+      const run = text.slice(index).match(/^`+/)[0];
+      let end = index + run.length;
+      while ((end = text.indexOf(run, end)) >= 0 && (text[end - 1] === "`" || text[end + run.length] === "`")) end += run.length;
+      if (end >= 0) { result += text.slice(index, end + run.length); index = end + run.length; continue; }
+    }
     if (text[index] !== "[") { result += text[index++]; continue; }
     let escapes = 0;
     for (let previous = index - 1; previous >= 0 && text[previous] === "\\"; previous--) escapes++;
@@ -171,7 +184,7 @@ function markdownLinkLabels(text) {
 }
 
 const reviewBlockTags = new Set(["address", "article", "aside", "blockquote", "br", "details", "div", "dl", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "summary", "table", "tbody", "td", "th", "thead", "tr", "ul"]);
-function htmlVisibleText(text, inlineBoundary) {
+function htmlVisibleText(text, inlineBoundary, literals = []) {
   let result = "";
   for (let index = 0; index < text.length;) {
     if (text[index] !== "<") { result += text[index++]; continue; }
@@ -190,6 +203,16 @@ function htmlVisibleText(text, inlineBoundary) {
       else if (character === ">") break;
     }
     if (end === text.length) { result += text.slice(index); break; }
+    if (["code", "pre"].includes(tag[1].toLowerCase()) && text[index + 1] !== "/") {
+      const closing = new RegExp("</" + tag[1] + "[ \t\r\n]*>", "i").exec(text.slice(end + 1));
+      const closeAt = closing ? end + 1 + closing.index : text.length;
+      const literal = htmlVisibleText(text.slice(end + 1, closeAt), inlineBoundary, literals)
+        .replace(/\uE000(\d+)\uE001/g, (_, index) => literals[Number(index)]);
+      const slot = literals.push(literal) - 1;
+      result += "\uE000" + slot + "\uE001";
+      index = closing ? closeAt + closing[0].length : text.length;
+      continue;
+    }
     if (tag[1].toLowerCase() === "img") {
       const attributes = text.slice(index + tag[0].length, end);
       const alt = [...attributes.matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)].find((attribute) => attribute[1].toLowerCase() === "alt");
@@ -205,7 +228,9 @@ function visibleReviewText(body, inlineBoundary = "") {
   // Structural parsing uses raw bytes: entities cannot create quotes, tags or links.
   const commentsRemoved = String(body || "").replace(/<!--[\s\S]*?(?:-->|$)/g,
     (comment) => comment.replace(/[^\r\n]/g, ""));
-  const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary));
+  const literals = [];
+  const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary, literals))
+    .replace(/\uE000(\d+)\uE001/g, (_, index) => literals[Number(index)]);
   return rendered.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
