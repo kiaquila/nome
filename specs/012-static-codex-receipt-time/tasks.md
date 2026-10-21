@@ -118,3 +118,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Cover actual affirmative numeric count contradictions independently of reporting verbs, preserving zero/no-only controls.
 
 - [x] Cover actual malformed inline tags, transitive/case-folded footnotes with used/unused lazy continuations, ordinary-reference fallback, and raw HTML container exits.
+
+- [x] Cover actual unused footnotes mentioned only in link destinations, with official-renderer hidden-attribute and visible-label controls.
+
+- [x] Keep quote/list raw HTML continuation indentation in the same peeled coordinate system, including combined containers.

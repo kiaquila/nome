@@ -169,25 +169,6 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null, codeLit
       }
       footnoteLines.set(index, owned);
     }
-    const footnoteSource = lines.map((line, index) => ownedFootnoteLines.has(index) ? "" : line).join("\n");
-    const usedFootnotes = new Set();
-    const collectFootnotes = (source) => {
-      for (let index = 0; index < source.length; index++) {
-        if (!source.startsWith("[^", index)) continue;
-        let escaped = 0;
-        for (let previous = index - 1; previous >= 0 && source[previous] === "\\"; previous--) escaped++;
-        if (escaped % 2) continue;
-        const end = source.indexOf("]", index + 2);
-        if (end >= 0) usedFootnotes.add(source.slice(index + 2, end).toLowerCase());
-      }
-    };
-    collectFootnotes(footnoteSource);
-    let priorSize;
-    do {
-      priorSize = usedFootnotes.size;
-      for (const [index, label] of footnoteDefinitions) if (usedFootnotes.has(label)) collectFootnotes(footnoteLines.get(index).map((line) => lines[line].replace(/\uE002(\d+)\uE003/g, (_, slot) => /^(?: {4}|\t)/.test(codeLiterals[Number(slot)] || "") ? codeLiterals[Number(slot)] : "")).join("\n"));
-    } while (usedFootnotes.size !== priorSize);
-    for (const [index, label] of footnoteDefinitions) if (!usedFootnotes.has(label)) for (const line of footnoteLines.get(index)) lines[line] = "";
 
     for (let index = 0; index < lines.length; index++) {
       const definition = lines[index].match(/^ {0,3}\[([^\]\n]+)\]:[ \t\f\v]*(.*)$/);
@@ -210,6 +191,27 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null, codeLit
         index = consumed;
       }
     }
+    const footnoteSource = lines.map((line, index) => (ownedFootnoteLines.has(index) || definitionLines.has(index)) ? "" : line).join("\n");
+    const usedFootnotes = new Set();
+    const collectFootnotes = (source) => {
+      source = markdownLinkLabels(protectMarkdownCode(source.replace(/^ {1,4}/gm, ""), []), references);
+      for (let index = 0; index < source.length; index++) {
+        if (!source.startsWith("[^", index)) continue;
+        let escaped = 0;
+        for (let previous = index - 1; previous >= 0 && source[previous] === "\\"; previous--) escaped++;
+        if (escaped % 2) continue;
+        const end = source.indexOf("]", index + 2);
+        if (end >= 0) usedFootnotes.add(source.slice(index + 2, end).toLowerCase());
+      }
+    };
+    collectFootnotes(footnoteSource);
+    let priorSize;
+    do {
+      priorSize = usedFootnotes.size;
+      for (const [index, label] of footnoteDefinitions) if (usedFootnotes.has(label)) collectFootnotes(footnoteLines.get(index).map((line) => lines[line].replace(/\uE002(\d+)\uE003/g, (_, slot) => /^(?: {4}|\t)/.test(codeLiterals[Number(slot)] || "") ? codeLiterals[Number(slot)] : "")).join("\n"));
+    } while (usedFootnotes.size !== priorSize);
+    for (const [index, label] of footnoteDefinitions) if (!usedFootnotes.has(label)) for (const line of footnoteLines.get(index)) lines[line] = "";
+
     text = lines.map((line, index) => definitionLines.has(index) ? "" : line).join("\n");
   }
   let result = "";
@@ -376,8 +378,12 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
     if (!terminator && !blankEnded) continue;
     const quoteDepth = (value) => (value.match(/^(?: {0,3}>[ \t]?)+/)?.[0].match(/>/g) || []).length;
     const depth = quoteDepth(lines[index]);
-    const listPrefix = lines[index].match(/^(?: {0,3}>[ \t]?)*([ \t]*)(?:[-+*]|[0-9]{1,9}[.)])[ \t]+/);
-    const withinContainer = (value) => quoteDepth(value) >= depth && (!listPrefix || /^\s*$/.test(value) || value.length - value.trimStart().length >= listPrefix[0].length);
+    const withoutQuotes = (value) => value.replace(/^(?: {0,3}>[ \t]?)+/, "");
+    const listPrefix = withoutQuotes(lines[index]).match(/^([ \t]*)(?:[-+*]|[0-9]{1,9}[.)])[ \t]+/);
+    const withinContainer = (value) => {
+      const content = withoutQuotes(value);
+      return quoteDepth(value) >= depth && (!listPrefix || /^\s*$/.test(content) || content.length - content.trimStart().length >= listPrefix[0].length);
+    };
     let end = index;
     if (terminator) { while (end < lines.length - 1 && !terminator.test(lines[end]) && withinContainer(lines[end + 1])) end++; }
     else { while (end + 1 < lines.length && withinContainer(lines[end + 1]) && peel(lines[end + 1]).trim()) end++; }

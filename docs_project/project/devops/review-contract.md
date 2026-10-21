@@ -77,3 +77,5 @@ Referenced footnote contents remain visible evidence; unused definitions are omi
 Positive numeric counts attached to issue, finding, or problem nouns remain contrary evidence independently of the reporting verb; zero/no-only statements retain their clean meaning.
 
 Inline HTML is removed only after its complete GFM tag grammar validates; malformed visible tags retain warnings. Footnote evidence follows case-insensitive references transitively, retaining used lazy continuations and omitting unused definitions; invalid footnote identifiers use ordinary reference parsing. Raw HTML parsing ends when its Markdown quote/list container ends.
+
+Footnote use graphs follow rendered inline labels and contents, including transitive references; hidden link destinations and HTML attributes cannot activate otherwise unused footnotes.
