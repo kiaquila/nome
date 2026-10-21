@@ -120,19 +120,20 @@ export function latestAiReviewRequestMarker(comments = [], agent, headSha) {
 // continues to use its original bytes and strict grammar.
 // HTML5 named whitespace/format entities (standard HTML entity names).
 const htmlSpacingEntities = {"ApplyFunction": "\u2061", "InvisibleComma": "\u2063", "InvisibleTimes": "\u2062", "MediumSpace": "\u205f", "NegativeMediumSpace": "\u200b", "NegativeThickSpace": "\u200b", "NegativeThinSpace": "\u200b", "NegativeVeryThinSpace": "\u200b", "NewLine": "\n", "NoBreak": "\u2060", "NonBreakingSpace": "\u00a0", "Tab": "\t", "ThickSpace": "\u205f\u200a", "ThinSpace": "\u2009", "VeryThinSpace": "\u200a", "ZeroWidthSpace": "\u200b", "af": "\u2061", "emsp": "\u2003", "emsp13": "\u2004", "emsp14": "\u2005", "ensp": "\u2002", "hairsp": "\u200a", "ic": "\u2063", "it": "\u2062", "lrm": "\u200e", "nbsp": "\u00a0", "numsp": "\u2007", "puncsp": "\u2008", "rlm": "\u200f", "shy": "\u00ad", "thinsp": "\u2009", "zwj": "\u200d", "zwnj": "\u200c"};
-function visibleReviewText(body) {
+function visibleReviewText(body, inlineBoundary = "") {
   return String(body || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
   }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity)
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/<\/?(?:strong|em)\b[^>]*>/gi, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/<\/?(?:address|article|aside|blockquote|br|details|div|dl|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|summary|table|tbody|td|th|thead|tr|ul)\b[^>]*>/gi, " ")
+    .replace(/<[^>]*>/g, inlineBoundary)
     .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
 export function containsBlockingSeverity(body, agent) {
   const text = agent === "codex" ? visibleReviewText(body) : String(body || "");
   if (agent === "codex") {
-    return /\bP[0-2]\b|\bdo not merge\b/i.test(text);
+    return /\bP[0-2]\b|\bdo not merge\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
   }
   if (agent === "gemini") {
     return /\b(critical|high)\b/i.test(text);
@@ -515,8 +516,8 @@ function validFindingCompanions(comment, state, headSha, config = {}, allowResol
 
 
 function hasIndentedCodexEnvelope(body) {
-  const leading = String(body || "").replace(/\uFEFF/g, "").match(/^(?:[ \t\r\n]*<!--[\s\S]*?-->)*[ \t\r\n]*/)?.[0] || "";
-  const heading = String(body || "").replace(/\uFEFF/g, "").replace(/<!--(?! codex-)[^\r\n]*?-->/gi, "").split(/\r?\n/).find((line) => /^[ \t]*## Codex Review Summary(?:\s|$)/.test(line));
+  const leading = String(body || "").replace(/[^\S \t\r\n]/g, "").match(/^(?:[ \t\r\n]*<!--[\s\S]*?-->)*[ \t\r\n]*/)?.[0] || "";
+  const heading = String(body || "").replace(/[^\S \t\r\n]/g, "").replace(/<!--(?! codex-)[^\r\n]*?-->/gi, "").split(/\r?\n/).find((line) => /^[ \t]*## Codex Review Summary(?:\s|$)/.test(line));
   return /^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/im.test(leading) ||
     /^(?: {4,}|[ \t]*\t)/.test(heading || "");
 }
