@@ -126,7 +126,7 @@ function visibleReviewText(body) {
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
   }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity)
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/<\/?(?:strong|em)\b[^>]*>/gi, "")
-    .replace(/\bdo[\s\p{Cf}]+not[\s\p{Cf}]+merge\b/giu, "Do not merge").replace(/\p{Cf}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
+    .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
 export function containsBlockingSeverity(body, agent) {

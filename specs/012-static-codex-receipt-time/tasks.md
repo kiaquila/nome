@@ -72,3 +72,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 16:51 actual counterparts: use the standard HTML5 whitespace/format entity map without dependencies; zero-width word separators cannot conceal the existing Do not merge warning. Exact ThinSpace/ZeroWidthSpace/numeric-zero-width controls pass. Indent-then-BOM protocol marker remains rejected by the existing raw envelope guard.
 
 16:51 consolidated corrections passed mandatory preflight: 105 Python and 57 Node tests; exact native counterpart regressions pass.
+
+16:59 actual variation-selector warning: visible contradiction checks normalize Unicode Default_Ignorable_Code_Point rather than only Cf, so P plus U+FE0F plus 1 cannot approve or clear history. Raw machine evidence parsing is unchanged; exact footer production-path regression added.
+
+16:59 variation-selector correction passed mandatory preflight: 105 Python and 57 Node tests.

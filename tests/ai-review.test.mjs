@@ -823,7 +823,7 @@ test('rendered footer warnings cannot approve or clear findings', async () => {
   assert.notEqual(classify(collapsed), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(collapsed)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   for (const body of [summary().replace('| 📝 **Code Review**', '<!--\n| 📝 **Code Review**'), summary().replace('<relative-time', '<!-- presentation\nmetadata --><relative-time')]) assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
-  for (const warning of ['P&#49; blocker', 'P*1* blocker', 'Do&#32;not&#32;merge', 'Do&MediumSpace;not&MediumSpace;merge', 'Do&hairsp;not&hairsp;merge', 'Do [not](https://example.com) merge', 'P<strong>1</strong> blocker', 'Do <em>not</em> merge', 'P&#8203;1 blocker', 'Do&#8203;not&#8203;merge', 'Do&ThinSpace;not&ThinSpace;merge', 'Do&ZeroWidthSpace;not&ZeroWidthSpace;merge']) {
+  for (const warning of ['P&#49; blocker', 'P*1* blocker', 'Do&#32;not&#32;merge', 'Do&MediumSpace;not&MediumSpace;merge', 'Do&hairsp;not&hairsp;merge', 'Do [not](https://example.com) merge', 'P<strong>1</strong> blocker', 'Do <em>not</em> merge', 'P&#8203;1 blocker', 'Do&#8203;not&#8203;merge', 'Do&ThinSpace;not&ThinSpace;merge', 'Do&ZeroWidthSpace;not&ZeroWidthSpace;merge', 'P\uFE0F1 blocker']) {
     const body = summary() + '\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n' + warning + '\n</details>';
     assert.notEqual(classify(body), 'pass');
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
