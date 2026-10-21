@@ -480,9 +480,9 @@ function visibleReviewText(body, inlineBoundary = "") {
 }
 
 function hasPositiveFindingStatement(text) {
-  return /\b[a-z]+[ \t]+(?:an?|one)[ \t]+(?:[a-z-]+[ \t]+)*(?:issues?|findings?|problems?)\b/i.test(text) || /\b[1-9][0-9]*\s+(?:[a-z-]+\s+)*(?:issues?|findings?|problems?)\b/i.test(text) || [...text.matchAll(/\b(?:found|there (?:is|are)) ([^.!?\n]*\b(?:issues?|findings?)\b)/gi)].some((statement) =>
+  return /\b[a-z]+[ \t]+(?:an?|one)[ \t]+(?:[a-z-]+[ \t]+)*(?:issues?|findings?|problems?|bugs?)\b/i.test(text) || /\b[1-9][0-9]*\s+(?:[a-z-]+\s+)*(?:issues?|findings?|problems?|bugs?)\b/i.test(text) || [...text.matchAll(/\b(?:found|there (?:is|are)) ([^.!?\n]*\b(?:issues?|findings?|problems?|bugs?)\b)/gi)].some((statement) =>
     statement[1].split(/\s+(?:and|but)\s+|[,;]/i).some((clause) =>
-      /\b(?:issues?|findings?)\b/i.test(clause) && !/^(?:no|zero|0)\b/i.test(clause.trim())));
+      /\b(?:issues?|findings?|problems?|bugs?)\b/i.test(clause) && !/^(?:no|zero|0)\b/i.test(clause.trim())));
 }
 
 export function containsBlockingSeverity(body, agent) {

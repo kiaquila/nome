@@ -85,3 +85,5 @@ Raw HTML continuation follows the ordered Markdown container stack, preserving b
 Official GitHub rendering retains the outer destination for an angle autolink inside a Markdown link label; it does not expose that destination as warning text. Indefinite finding statements remain contrary evidence independently of reporting verbs within a paragraph; separate paragraphs do not form one statement.
 
 Footnote identifiers use Unicode 16.0 full case folding, with a shared generated exception table and per-code-point lowercase fallback; protocol bytes and canonical state fields are unchanged.
+
+The shared affirmative finding noun category includes bugs consistently for article, count, and existential statements. A late visible bug statement renews negative observation time; only a strictly newer canonical section clearance resolves it. No/zero statements and paragraph boundaries retain their existing semantics.

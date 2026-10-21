@@ -128,3 +128,5 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Cover official nested-angle-link rendering and actual indefinite finding statements, retaining normal-reference footnote and paragraph-boundary controls.
 
 - [x] Cover actual Unicode full-case-fold footnote matching with the shared generated primitive and exact SS/ß regression.
+
+- [x] Cover actual late bug finding edit versus intermediate clean evidence, strictly newer canonical recovery, and no/zero/paragraph controls.
