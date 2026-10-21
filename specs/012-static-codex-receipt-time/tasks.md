@@ -98,3 +98,9 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Reject unmatched footer closures swallowing visible failed rows; preserve quoted code warnings and existing singular article finding statements with exact native regressions.
 
 - [x] Share validated inline/reference destination grammar for multiline definitions and preserve literal code under quote/list containers.
+
+- [x] Correct actual escaped-backtick false blocks and cover existing rendered article-finding/raw comment-pipe delimiter protections.
+
+- [x] Omit valid nonrendered reference definitions without hiding malformed/literal text; retain worded finding-count contradictions and strict opaque raw-HTML row protections.
+
+- [x] Preserve literal severity in invalid blank-line link labels while accepting valid soft-line-break labels.

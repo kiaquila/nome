@@ -57,3 +57,9 @@ Markdown literal code is isolated before HTML, links and entity projection; inde
 Informational footer removal requires a single balanced details element; content after its matching close remains subject to the original strict grammar. Blockquote-contained code fences remain literal in warning projection, and the existing finding category includes singular article wording.
 
 Defined reference links support a destination on the following line using the same destination/title validation as inline links. Quote and list container prefixes are recognized before literal code classification.
+
+Escaped opening backticks remain literal punctuation around real links; only an unescaped opener establishes a code span, whose backslashes remain literal. Original table delimiters remain strict even inside HTML comments, and rendered finding statements retain observation-time vetoes.
+
+Validated reference-definition blocks, including consumed destination/title lines, are omitted from visible warning text; malformed definitions and code-rendered definitions stay literal. Existing positive finding counts remain contradictory to clean proof.
+
+Markdown link labels containing a blank line remain literal visible text; a valid soft line break does not change destination visibility. This projection does not change protocol authority.

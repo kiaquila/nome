@@ -143,6 +143,7 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null) {
   const references = knownReferences || new Set();
   if (!knownReferences) {
     const lines = text.split(/\r\n|\r|\n/);
+    const definitionLines = new Set();
     for (let index = 0; index < lines.length; index++) {
       const definition = lines[index].match(/^ {0,3}\[([^\]\n]+)\]:[ \t\f\v]*(.*)$/);
       if (!definition) continue;
@@ -160,9 +161,11 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null) {
       }
       if (valid) {
         references.add(definition[1].trim().replace(/\s+/g, " ").toLowerCase());
+        for (let line = index; line <= consumed; line++) definitionLines.add(line);
         index = consumed;
       }
     }
+    text = lines.map((line, index) => definitionLines.has(index) ? "" : line).join("\n");
   }
   let result = "";
   for (let index = 0; index < text.length;) {
@@ -174,6 +177,9 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null) {
       result += text.slice(index, end); index = end; continue;
     }
     if (text[index] === "`") {
+      let escaped = 0;
+      for (let previous = index - 1; previous >= 0 && text[previous] === "\\"; previous--) escaped++;
+      if (escaped % 2) { result += text[index++]; continue; }
       const run = text.slice(index).match(/^`+/)[0];
       let end = index + run.length;
       while ((end = text.indexOf(run, end)) >= 0 && (text[end - 1] === "`" || text[end + run.length] === "`")) end += run.length;
@@ -190,6 +196,7 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null) {
       if (text[labelEnd] === "]") brackets--;
     }
     const label = text.slice(index + 1, labelEnd - 1);
+    if (/\n[ \t\f\v]*\n/.test(label.replace(/\r\n?/g, "\n"))) { result += text[index++]; continue; }
     const labelReference = label.trim().replace(/\s+/g, " ").toLowerCase();
     let nestedLink = false;
     if (!brackets && label.includes("[")) markdownLinkLabels(label, references, () => { nestedLink = true; });
@@ -288,6 +295,9 @@ function protectMarkdownCode(text, literals) {
       result += keep(text.slice(index, end)); index = end; continue;
     }
     if (text[index] === "`") {
+      let escaped = 0;
+      for (let previous = index - 1; previous >= 0 && text[previous] === "\\"; previous--) escaped++;
+      if (escaped % 2) { result += text[index++]; continue; }
       const run = text.slice(index).match(/^`+/)[0];
       let end = index + run.length;
       while ((end = text.indexOf(run, end)) >= 0 && (text[end - 1] === "`" || text[end + run.length] === "`")) end += run.length;
@@ -318,7 +328,7 @@ function visibleReviewText(body, inlineBoundary = "") {
 export function containsBlockingSeverity(body, agent) {
   const text = agent === "codex" ? visibleReviewText(body) : String(body || "");
   if (agent === "codex") {
-    return /\bP[0-2]\b|\bdo not merge\b|\bfound (?:some |major |any |an? )?(?:issues?|findings?)\b|\bsecurity review failed\b|\breview pending\b|\bchanges requested\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
+    return /\bfound (?!(?:no|zero|0)\b)[^.!?\r\n]*\b(?:issues?|findings?)\b/i.test(text) || /\bP[0-2]\b|\bdo not merge\b|\bsecurity review failed\b|\breview pending\b|\bchanges requested\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
   }
   if (agent === "gemini") {
     return /\b(critical|high)\b/i.test(text);
