@@ -69,3 +69,7 @@ Reference-definition labels must satisfy the standard nonempty label grammar and
 Visible contradiction projection preserves the standard raw HTML block distinction: HTML still renders, while Markdown syntax in the block remains literal until its standard terminator. About Codex has no special exception. Rendered no/zero/0 finding negation remains benign, and invalid reference destinations remain literal.
 
 Optional-semicolon numeric character references are interpreted only in raw HTML block text, matching GitHub rendering; ordinary Markdown (including inline HTML) requires the semicolon, and literal Markdown code is never decoded. Finding statements normalize soft breaks while retaining paragraph boundaries.
+
+Raw HTML context detection peels the existing Markdown quote/list container prefixes. Finding-statement negation applies per finding clause: a zero count in one section cannot hide a positive finding in another. GitHub tagfilter preserves visible script/style text as escaped markup; it must not be discarded.
+
+Referenced footnote contents remain visible evidence; unused definitions are omitted only in Markdown contexts, with code and raw HTML contexts kept distinct. ordinary link destinations are suppressed only within GitHub’s balanced nesting limit. Malformed closing tags remain literal in Markdown but use HTML parsing inside raw blocks. Collapsed details remain non-authoritative across blank lines, independently of Markdown block termination. Existential issue statements retain the existing finding veto.

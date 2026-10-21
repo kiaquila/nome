@@ -110,3 +110,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Preserve raw-HTML-block Markdown literals without exposing hidden HTML attributes; retain rendered benign finding negation and malformed-reference destination controls.
 
 - [x] Route optional-semicolon numeric decoding by verified HTML-block context; preserve Markdown/code literals and soft-break finding evidence.
+
+- [x] Preserve raw HTML warnings inside quote/list containers and mixed zero/positive finding clauses; retain renderer-verified script/style visible evidence.
+
+- [x] Cover actual footnotes, destination nesting limits, contextual malformed closing tags, blank-separated collapsed completion rows and existential finding statements.

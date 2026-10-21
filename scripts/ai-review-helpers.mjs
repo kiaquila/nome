@@ -133,14 +133,14 @@ function validMarkdownDestination(raw, allowEmpty = true) {
   let depth = 0;
   for (let index = 0; index < match[1].length; index++) {
     if (match[1][index] === "\\") { index++; continue; }
-    if (match[1][index] === "(") depth++;
+    if (match[1][index] === "(" && ++depth > 32) return false;
     if (match[1][index] === ")" && --depth < 0) return false;
   }
   return depth === 0;
 }
 
 function validReferenceLabel(label) {
-  if (label.length > 999 || !/[^ \t\r\n\f\v]/.test(label) || /\n[ \t\f\v]*\n/.test(label.replace(/\r\n?/g, "\n"))) return false;
+  if (label.startsWith("^") || label.length > 999 || !/[^ \t\r\n\f\v]/.test(label) || /\n[ \t\f\v]*\n/.test(label.replace(/\r\n?/g, "\n"))) return false;
   for (let index = 0; index < label.length; index++) {
     if (label[index] === "\\" && /[!-/:-@[-`{-~]/.test(label[index + 1] || "")) { index++; continue; }
     if (label[index] === "[" || label[index] === "]") return false;
@@ -153,6 +153,23 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null) {
   if (!knownReferences) {
     const lines = text.split(/\r\n|\r|\n/);
     const definitionLines = new Set();
+    const footnoteDefinitions = new Map();
+    for (let index = 0; index < lines.length; index++) {
+      const definition = lines[index].match(/^ {0,3}\[\^([^\]\n]+)\]:[ \t]*(.*)$/);
+      if (definition && validReferenceLabel(definition[1])) footnoteDefinitions.set(index, definition[1].toLowerCase());
+    }
+    const footnoteSource = lines.map((line, index) => footnoteDefinitions.has(index) ? "" : line).join("\n");
+    const usedFootnotes = new Set();
+    for (let index = 0; index < footnoteSource.length; index++) {
+      if (!footnoteSource.startsWith("[^", index)) continue;
+      let escaped = 0;
+      for (let previous = index - 1; previous >= 0 && footnoteSource[previous] === "\\"; previous--) escaped++;
+      if (escaped % 2) continue;
+      const end = footnoteSource.indexOf("]", index + 2);
+      if (end >= 0) usedFootnotes.add(footnoteSource.slice(index + 2, end).toLowerCase());
+    }
+    for (const [index, label] of footnoteDefinitions) if (!usedFootnotes.has(label)) lines[index] = "";
+
     for (let index = 0; index < lines.length; index++) {
       const definition = lines[index].match(/^ {0,3}\[([^\]\n]+)\]:[ \t\f\v]*(.*)$/);
       if (!definition || !validReferenceLabel(definition[1])) continue;
@@ -247,7 +264,7 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null) {
 }
 
 const reviewBlockTags = new Set(["address", "article", "aside", "blockquote", "br", "details", "div", "dl", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "summary", "table", "tbody", "td", "th", "thead", "tr", "ul"]);
-function htmlVisibleText(text, inlineBoundary, literals = []) {
+function htmlVisibleText(text, inlineBoundary, literals = [], rawBlock = false) {
   let result = "";
   for (let index = 0; index < text.length;) {
     if (text[index] !== "<") { result += text[index++]; continue; }
@@ -266,10 +283,11 @@ function htmlVisibleText(text, inlineBoundary, literals = []) {
       else if (character === ">") break;
     }
     if (end === text.length) { result += text.slice(index); break; }
+    if (!rawBlock && text[index + 1] === "/" && !/^<\/[A-Za-z][A-Za-z0-9-]*[ \t\r\n\f]*>$/.test(text.slice(index, end + 1))) { result += text.slice(index, end + 1); index = end + 1; continue; }
     if (["code", "pre"].includes(tag[1].toLowerCase()) && text[index + 1] !== "/") {
       const closing = new RegExp("</" + tag[1] + "[ \t\r\n]*>", "i").exec(text.slice(end + 1));
       const closeAt = closing ? end + 1 + closing.index : text.length;
-      const literal = htmlVisibleText(text.slice(end + 1, closeAt), inlineBoundary, literals)
+      const literal = htmlVisibleText(text.slice(end + 1, closeAt), inlineBoundary, literals, rawBlock)
         .replace(/\uE000(\d+)\uE001/g, (_, index) => literals[Number(index)]);
       const slot = literals.push(literal) - 1;
       result += "\uE000" + slot + "\uE001";
@@ -321,7 +339,8 @@ function protectMarkdownCode(text, literals, keepLines = false) {
 function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals) {
   text = text.replace(/\r\n?/g, "\n");
   const lines = text.split("\n");
-  const eligible = protectMarkdownCode(text, [], true).split("\n");
+  const peel = (line) => line.replace(/^(?: {0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]))*/, "");
+  const eligible = protectMarkdownCode(text, [], true).split("\n").map(peel);
   const blockNames = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
   const blockTag = new RegExp("^ {0,3}</?(?:" + blockNames + ")(?=[ \\t\\f/>]|$)", "i");
   const completeTag = /^ {0,3}(?:<\/[A-Za-z][A-Za-z0-9-]*[ \t\f]*>|<[A-Za-z][A-Za-z0-9-]*(?:[ \t\f]+[^\s"'<>/=]+(?:[ \t\f]*=[ \t\f]*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*[ \t\f]*\/?>)[ \t\f]*$/;
@@ -333,12 +352,12 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
     else if (/^ {0,3}<\?/.test(line)) terminator = /\?>/;
     else if (/^ {0,3}<![A-Z]/.test(line)) terminator = />/;
     else if (/^ {0,3}<!\[CDATA\[/.test(line)) terminator = /\]\]>/;
-    const blankEnded = !terminator && (blockTag.test(line) || ((!index || !lines[index - 1].trim()) && completeTag.test(line)));
+    const blankEnded = !terminator && (blockTag.test(line) || ((!index || !peel(lines[index - 1]).trim()) && completeTag.test(line)));
     if (!terminator && !blankEnded) continue;
     let end = index;
     if (terminator) { while (end < lines.length - 1 && !terminator.test(lines[end])) end++; }
-    else { while (end + 1 < lines.length && lines[end + 1].trim()) end++; }
-    const visible = htmlVisibleText(lines.slice(index, end + 1).join("\n"), inlineBoundary, literals)
+    else { while (end + 1 < lines.length && peel(lines[end + 1]).trim()) end++; }
+    const visible = htmlVisibleText(lines.slice(index, end + 1).join("\n"), inlineBoundary, literals, true)
       .replace(/\uE000(\d+)\uE001/g, (_, slot) => literals[Number(slot)]);
     const decoded = visible.replace(/&#(x[0-9a-f]+|[0-9]+);?/gi, (entity, value) => {
       const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
@@ -372,10 +391,16 @@ function visibleReviewText(body, inlineBoundary = "") {
     .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\r\n?/g, "\n").replace(/\n[ \t\f\v]*\n/g, "\uE004").replace(/\s+/g, " ").replace(/\uE004/g, "\n\n");
 }
 
+function hasPositiveFindingStatement(text) {
+  return [...text.matchAll(/\b(?:found|there (?:is|are)) ([^.!?\n]*\b(?:issues?|findings?)\b)/gi)].some((statement) =>
+    statement[1].split(/\s+(?:and|but)\s+|[,;]/i).some((clause) =>
+      /\b(?:issues?|findings?)\b/i.test(clause) && !/^(?:no|zero|0)\b/i.test(clause.trim())));
+}
+
 export function containsBlockingSeverity(body, agent) {
   const text = agent === "codex" ? visibleReviewText(body) : String(body || "");
   if (agent === "codex") {
-    return /\bfound (?!(?:no|zero|0)\b)[^.!?\r\n]*\b(?:issues?|findings?)\b/i.test(text) || /\bP[0-2]\b|\bdo not merge\b|\bsecurity review failed\b|\breview pending\b|\bchanges requested\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
+    return hasPositiveFindingStatement(text) || /\bP[0-2]\b|\bdo not merge\b|\bsecurity review failed\b|\breview pending\b|\bchanges requested\b/i.test(text) || /\bdo not merge\b/i.test(visibleReviewText(body, " "));
   }
   if (agent === "gemini") {
     return /\b(critical|high)\b/i.test(text);
