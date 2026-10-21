@@ -708,3 +708,27 @@ test('invalid completed companion retains newer observation after finding resolu
   const valid = { ...old, body: old.body.replace(row, row.replace('`2667f79`', '`aaaaaaa`')) };
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, valid, comment(summary())] })), 'pass');
 });
+
+
+test('foreign-only negative edits remain observations and indented protocol is no historical finding', async () => {
+  const old = comment(summary({ commit_sha: other, has_any_findings: true }).replaceAll('`2667f79`', '`aaaaaaa`').replaceAll(after, before), { created_at: before, updated_at: later });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary())] })), 'pass');
+  for (const prefix of [' ', '  ', '   ']) assert.equal(classify(summary().replace(/^<!-- codex-/gm, prefix + '<!-- codex-')), 'pass');
+  for (const prefix of ['    ', '\t']) {
+    const example = comment(summary({ has_any_findings: true }).replace(/^<!-- codex-/gm, prefix + '<!-- codex-').replaceAll(after, before), { created_at: before, updated_at: before });
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, example], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+    assert.notEqual(classify(summary().replace(/^<!-- codex-/gm, prefix + '<!-- codex-')), 'pass');
+    const finding = comment(summary({ has_any_findings: true }).replaceAll(after, '2026-10-14T23:00:00Z'), { created_at: '2026-10-14T23:00:00Z', updated_at: '2026-10-14T23:00:00Z' });
+    const exampleClear = comment(summary().replace(/^<!-- codex-/gm, prefix + '<!-- codex-').replaceAll(after, before), { created_at: before, updated_at: before });
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, finding, exampleClear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  }
+});
+
+test('finding-bearing foreign companion requires its own visible row and configured identity survives', async () => {
+  const old = comment(summary({ has_any_findings: true }, { ...completed, commit_sha: other, has_any_findings: true }).replaceAll(after, before), { created_at: before, updated_at: later });
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary())] })), 'pass');
+  const custom = { login: 'configured-codex[bot]' };
+  const coherent = comment(summary({ has_any_findings: true }).replaceAll(after, before), { user: custom, created_at: before, updated_at: later });
+  const clean = comment(summary(), { user: custom });
+  assert.equal(selectSummary([coherent, clean], head, marker, { trustedReviewLogins: [custom.login] }), 'pass');
+});

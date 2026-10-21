@@ -143,15 +143,16 @@ function codeCompletionTime(comment) {
   return Number.isFinite(value) && Number.isFinite(edited) && value <= edited + 999 ? match[1] : null;
 }
 
-export function verdictTime(comment, result) {
+export function verdictTime(comment, result, headSha = null, config = {}) {
   {
     const state = validatedTypedState(comment);
-    if (state && validFindingCompanions(comment, state, Object.values(state).find((review) => review.has_any_findings || review.has_unresolved_findings)?.commit_sha)) {
+    if (state && validFindingCompanions(comment, state, headSha, config)) {
       const clocks = ["code_review", "security_review"].filter((kind) =>
-        state[kind].has_any_findings === true || state[kind].has_unresolved_findings === true
+        (headSha === null || state[kind].commit_sha === headSha) &&
+        (state[kind].has_any_findings === true || state[kind].has_unresolved_findings === true)
       ).map((kind) => state[kind].status === "completed" && canonicalSectionClear(comment,
         { ...state, [kind]: { ...state[kind], has_any_findings: false, has_unresolved_findings: false } },
-        kind, state[kind].commit_sha, {}) ? sectionCompletionBucket(comment, kind, state[kind].commit_sha) : NaN);
+        kind, state[kind].commit_sha, config) ? sectionCompletionBucket(comment, kind, state[kind].commit_sha) : NaN);
       if (clocks.length && clocks.every(Number.isFinite)) return new Date(Math.max(...clocks) * 1000).toISOString();
     }
   }
@@ -223,6 +224,7 @@ function renderedSummaryAgrees(rendered, state, headSha, requestMarker) {
 // Parse a closed schema. Unknown versions, duplicate JSON keys/markers and prose
 // cannot silently become a positive verdict. The native summary is mutable.
 export function classifyCodexSummaryComment(comment, headSha, requestMarker = null, config = {}) {
+  if (/^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/m.test(String(comment?.body || ""))) return null;
   if (!/^[a-f0-9]{40}$/.test(headSha || "") ||
       !isTrustedReviewLogin(comment?.user?.login, "codex", config)) return null;
   const body = String(comment?.body || "").trim();
@@ -303,14 +305,14 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
         !(result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
           hasUnclearedTypedFindings(comments, headSha, requestMarker, config))) result = null;
     if (result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
-        validFindingCompanions(comment, validatedTypedState(comment), headSha) &&
+        validFindingCompanions(comment, validatedTypedState(comment), headSha, config, true) &&
         !hasUnclearedTypedFindings(comments, headSha, requestMarker, config)) result = "neutral";
-    if (result === "pass" && !isAfterRequest(comment, requestMarker, verdictTime(comment, result))) result = null;
+    if (result === "pass" && !isAfterRequest(comment, requestMarker, verdictTime(comment, result, headSha, config))) result = null;
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
     if (result === "pass" && hasHeadUpdateBetweenTimestamps(timeline, triggerAt, reviewEvidenceTimestamp(comment))) result = null;
     if (unrecognized && isTrustedReviewLogin(comment?.user?.login, "codex", config) &&
         isCodexReviewSignal(comment?.body) && isAfterRequest(comment, requestMarker)) result = "pending";
-    return { comment, result, time: verdictTime(comment, result) };
+    return { comment, result, time: verdictTime(comment, result, headSha, config) };
   }).filter((entry) => entry.result !== null && entry.result !== "neutral")
     .sort((left, right) => Math.floor(Date.parse(right.time) / 1000) - Math.floor(Date.parse(left.time) / 1000) ||
       ({ fail: 3, pending: 2, pass: 1 }[right.result] || 0) - ({ fail: 3, pending: 2, pass: 1 }[left.result] || 0))[0]?.result || null;
@@ -389,6 +391,7 @@ export function isAcceptableClaudeComment(comment, headSha, config = {}) {
 
 
 function validatedTypedState(comment) {
+  if (/^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/m.test(String(comment?.body || ""))) return null;
   const body = String(comment?.body || "").trim().replace(/<!--(?! codex-)[\s\S]*?-->/g, "").trim().replace(/^<!-- codex-pull-request-review-summary -->\s*/, "");
   if ((body.match(/<!-- codex-/g) || []).length !== 1) return null;
   const match = body.match(/^<!-- codex-review-state:v1 (\{[\s\S]*?\}) -->/);
@@ -469,13 +472,12 @@ function canonicalSectionClear(comment, state, kind, headSha, config) {
 
 
 // A resolved own-section finding cannot erase a newer invalid companion.
-function validFindingCompanions(comment, state, headSha) {
+function validFindingCompanions(comment, state, headSha, config = {}, allowResolvedOwn = false) {
   return Object.entries(state).every(([kind, review]) => {
     const title = kind === "security_review" ? "**Security Review**" : "**Code Review**";
     if (Object.values(review).every((value) => value === null)) return !String(comment.body || "").split(/\r?\n/).some((line) => line.startsWith("|") && line.includes(title));
     if (review.status !== "completed") return false;
-    if (review.has_any_findings || review.has_unresolved_findings) return true;
-    return review.has_any_findings === false && review.has_unresolved_findings === false &&
-      canonicalSectionClear(comment, state, kind, review.commit_sha, {});
+    if (allowResolvedOwn && review.commit_sha === headSha && (review.has_any_findings || review.has_unresolved_findings)) return true;
+    return canonicalSectionClear(comment, { ...state, [kind]: { ...review, has_any_findings: false, has_unresolved_findings: false } }, kind, review.commit_sha, config);
   });
 }

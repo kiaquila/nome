@@ -89,7 +89,7 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
       const bucket = (value) => Math.floor(Date.parse(value || "") / 1000);
       const latestComment = Math.max(...comments.filter((comment) =>
         isTrustedReviewLogin(comment.user?.login, "codex", config) && isCodexReviewSignal(comment.body)
-      ).map((comment) => bucket(verdictTime(comment, classifyCodexSummaryComment(comment, headSha, marker, config)))).filter(Number.isFinite));
+      ).map((comment) => bucket(verdictTime(comment, classifyCodexSummaryComment(comment, headSha, marker, config), headSha, config))).filter(Number.isFinite));
       const latestNative = Math.max(...reviews.filter((review) => afterRequest(review.submitted_at) &&
         classifyCodexNativeReview(review, reviewComments, headSha, config) === "pass"
       ).map((review) => bucket(review.submitted_at)).filter(Number.isFinite));
