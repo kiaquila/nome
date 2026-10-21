@@ -63,3 +63,9 @@ Escaped opening backticks remain literal punctuation around real links; only an 
 Validated reference-definition blocks, including consumed destination/title lines, are omitted from visible warning text; malformed definitions and code-rendered definitions stay literal. Existing positive finding counts remain contradictory to clean proof.
 
 Markdown link labels containing a blank line remain literal visible text; a valid soft line break does not change destination visibility. This projection does not change protocol authority.
+
+Reference-definition labels must satisfy the standard nonempty label grammar and length bound before definitions become nonrendered; unescaped brackets remain literal warning text.
+
+Visible contradiction projection preserves the standard raw HTML block distinction: HTML still renders, while Markdown syntax in the block remains literal until its standard terminator. About Codex has no special exception. Rendered no/zero/0 finding negation remains benign, and invalid reference destinations remain literal.
+
+Optional-semicolon numeric character references are interpreted only in raw HTML block text, matching GitHub rendering; ordinary Markdown (including inline HTML) requires the semicolon, and literal Markdown code is never decoded. Finding statements normalize soft breaks while retaining paragraph boundaries.

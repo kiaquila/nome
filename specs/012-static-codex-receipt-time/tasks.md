@@ -104,3 +104,9 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Omit valid nonrendered reference definitions without hiding malformed/literal text; retain worded finding-count contradictions and strict opaque raw-HTML row protections.
 
 - [x] Preserve literal severity in invalid blank-line link labels while accepting valid soft-line-break labels.
+
+- [x] Reject invalid reference-definition labels before suppressing literal visible findings (native 4341183311).
+
+- [x] Preserve raw-HTML-block Markdown literals without exposing hidden HTML attributes; retain rendered benign finding negation and malformed-reference destination controls.
+
+- [x] Route optional-semicolon numeric decoding by verified HTML-block context; preserve Markdown/code literals and soft-break finding evidence.

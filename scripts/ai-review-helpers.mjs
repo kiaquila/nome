@@ -139,6 +139,15 @@ function validMarkdownDestination(raw, allowEmpty = true) {
   return depth === 0;
 }
 
+function validReferenceLabel(label) {
+  if (label.length > 999 || !/[^ \t\r\n\f\v]/.test(label) || /\n[ \t\f\v]*\n/.test(label.replace(/\r\n?/g, "\n"))) return false;
+  for (let index = 0; index < label.length; index++) {
+    if (label[index] === "\\" && /[!-/:-@[-`{-~]/.test(label[index + 1] || "")) { index++; continue; }
+    if (label[index] === "[" || label[index] === "]") return false;
+  }
+  return true;
+}
+
 function markdownLinkLabels(text, knownReferences = null, onLink = null) {
   const references = knownReferences || new Set();
   if (!knownReferences) {
@@ -146,7 +155,7 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null) {
     const definitionLines = new Set();
     for (let index = 0; index < lines.length; index++) {
       const definition = lines[index].match(/^ {0,3}\[([^\]\n]+)\]:[ \t\f\v]*(.*)$/);
-      if (!definition) continue;
+      if (!definition || !validReferenceLabel(definition[1])) continue;
       const destinationIndex = definition[2] ? index : index + 1;
       let destination = definition[2] || (/^ {0,3}\S/.test(lines[destinationIndex] || "") ? lines[destinationIndex] : "");
       let valid = validMarkdownDestination(destination, false), consumed = destinationIndex;
@@ -278,9 +287,9 @@ function htmlVisibleText(text, inlineBoundary, literals = []) {
   return result;
 }
 
-function protectMarkdownCode(text, literals) {
+function protectMarkdownCode(text, literals, keepLines = false) {
   let result = "";
-  const keep = (literal) => "\uE002" + (literals.push(literal) - 1) + "\uE003";
+  const keep = (literal) => "\uE002" + (literals.push(literal) - 1) + "\uE003" + (keepLines ? literal.replace(/[^\n]/g, "") : "");
   for (let index = 0; index < text.length;) {
     const lineStart = index === 0 || text[index - 1] === "\n";
     if (lineStart && /^(?: {0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]))*(?: {4}|\t)/.test(text.slice(index))) {
@@ -308,21 +317,59 @@ function protectMarkdownCode(text, literals) {
   return result;
 }
 
+// Raw HTML blocks render HTML but do not interpret Markdown in their contents.
+function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals) {
+  text = text.replace(/\r\n?/g, "\n");
+  const lines = text.split("\n");
+  const eligible = protectMarkdownCode(text, [], true).split("\n");
+  const blockNames = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
+  const blockTag = new RegExp("^ {0,3}</?(?:" + blockNames + ")(?=[ \\t\\f/>]|$)", "i");
+  const completeTag = /^ {0,3}(?:<\/[A-Za-z][A-Za-z0-9-]*[ \t\f]*>|<[A-Za-z][A-Za-z0-9-]*(?:[ \t\f]+[^\s"'<>/=]+(?:[ \t\f]*=[ \t\f]*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*[ \t\f]*\/?>)[ \t\f]*$/;
+  for (let index = 0; index < lines.length; index++) {
+    const line = eligible[index] || "";
+    const raw = line.match(/^ {0,3}<(script|pre|style|textarea)(?=[ \t\f>]|$)/i);
+    let terminator = raw ? new RegExp("</" + raw[1] + "[ \\t\\f]*>", "i") : null;
+    if (/^ {0,3}<!--/.test(line)) terminator = /-->/;
+    else if (/^ {0,3}<\?/.test(line)) terminator = /\?>/;
+    else if (/^ {0,3}<![A-Z]/.test(line)) terminator = />/;
+    else if (/^ {0,3}<!\[CDATA\[/.test(line)) terminator = /\]\]>/;
+    const blankEnded = !terminator && (blockTag.test(line) || ((!index || !lines[index - 1].trim()) && completeTag.test(line)));
+    if (!terminator && !blankEnded) continue;
+    let end = index;
+    if (terminator) { while (end < lines.length - 1 && !terminator.test(lines[end])) end++; }
+    else { while (end + 1 < lines.length && lines[end + 1].trim()) end++; }
+    const visible = htmlVisibleText(lines.slice(index, end + 1).join("\n"), inlineBoundary, literals)
+      .replace(/\uE000(\d+)\uE001/g, (_, slot) => literals[Number(slot)]);
+    const decoded = visible.replace(/&#(x[0-9a-f]+|[0-9]+);?/gi, (entity, value) => {
+      const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
+      return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
+    }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity);
+    const slot = blockLiterals.push(decoded) - 1;
+    lines[index] = "\uE005" + slot + "\uE006";
+    for (let inner = index + 1; inner <= end; inner++) lines[inner] = "";
+    index = end;
+  }
+  return lines.join("\n");
+}
+
 function visibleReviewText(body, inlineBoundary = "") {
   // Structural parsing uses raw bytes: entities cannot create quotes, tags or links.
+  const literals = [];
+  const blockLiterals = [];
   const markdownLiterals = [];
-  const protectedCode = protectMarkdownCode(String(body || ""), markdownLiterals);
+  const htmlProtected = protectHtmlBlockMarkdown(String(body || ""), inlineBoundary, literals, blockLiterals);
+  const protectedCode = protectMarkdownCode(htmlProtected, markdownLiterals);
   const commentsRemoved = protectedCode.replace(/<!--[\s\S]*?(?:-->|$)/g,
     (comment) => comment.replace(/[^\r\n]/g, ""));
-  const literals = [];
   const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary, literals))
     .replace(/\uE000(\d+)\uE001/g, (_, index) => literals[Number(index)]);
   return rendered.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
   }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity)
+    .replace(/\uE005(\d+)\uE006/g, (_, index) => blockLiterals[Number(index)])
     .replace(/\uE002(\d+)\uE003/g, (_, index) => markdownLiterals[Number(index)])
-    .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
+    .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\r\n?/g, "\n").replace(/\n[ \t\f\v]*\n/g, "\uE004").replace(/\s+/g, " ").replace(/\uE004/g, "\n\n");
 }
 
 export function containsBlockingSeverity(body, agent) {
