@@ -126,6 +126,9 @@ function markdownLinkLabels(text) {
   let result = "";
   for (let index = 0; index < text.length;) {
     if (text[index] !== "[") { result += text[index++]; continue; }
+    let escapes = 0;
+    for (let previous = index - 1; previous >= 0 && text[previous] === "\\"; previous--) escapes++;
+    if (escapes % 2) { result += text[index++]; continue; }
     let labelEnd = index + 1, brackets = 1;
     for (; labelEnd < text.length && brackets; labelEnd++) {
       if (text[labelEnd] === "\\") { labelEnd++; continue; }
@@ -158,8 +161,9 @@ function markdownLinkLabels(text) {
       if (text[destinationEnd] === "(") parentheses++;
       if (text[destinationEnd] === ")") parentheses--;
     }
-    const destination = text.slice(labelEnd + 1, destinationEnd - 1);
-    if (parentheses || /\\([^\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e])/.test(destination) || !/^(?:<[^<>\s]*>|(?:\\.|[^\s<>])+)(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?\s*$/.test(destination)) { result += text[index++]; continue; }
+    const rawDestination = text.slice(labelEnd + 1, destinationEnd - 1);
+    const destination = rawDestination.replace(/^[ \t\r\n\f\v]*|[ \t\r\n\f\v]*$/g, "");
+    if (parentheses || /\r?\n[ \t]*\r?\n/.test(rawDestination) || destination && (/\\([^\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e])/.test(destination) || !/^(?:<[^<>\s]*>|(?:\\.|[^\s<>])+)(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?\s*$/.test(destination))) { result += text[index++]; continue; }
     result += text.slice(index + 1, labelEnd - 1);
     index = destinationEnd;
   }
