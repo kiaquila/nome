@@ -82,3 +82,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 17:08 current-batch counterparts: complementary joined/separated inline-text projections preserve P<span></span>1 severity and Do<span>not</span>merge warnings. Raw indentation guard accounts for JS-trim-consumed Unicode whitespace, including NBSP between indentation and protocol marker; Markdown examples cannot acquire authority. No finding-count grammar added where none existed.
 
 17:03/17:08 consolidated source passed mandatory preflight (105 Python, 57 Node). Final JS/tests edit 17:11:06 UTC; explicit Node proof started 17:14:00 UTC and exited 0 at 17:14:15 UTC. Independent bounded reviewer cleared exact current-batch controls. Publication waits for the shared batch barrier.
+
+17:23 actual native findings: warning presentation projection consumes quoted HTML attributes and balanced Markdown link destinations fully. Exact permitted-footer Do <span title=">">not</span> merge and Do [not](https://example.com/(x)) merge remain blocking for approval and typed-history clearance; raw machine grammar unchanged.
+
+- [x] Preserve exact native-reported image-alt, reference-link and malformed-link warnings; reject optional-pipe and quoted encoded companion rows as ambiguous clock/presentation evidence, with strict original-body hidden-row controls.

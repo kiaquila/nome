@@ -120,13 +120,79 @@ export function latestAiReviewRequestMarker(comments = [], agent, headSha) {
 // continues to use its original bytes and strict grammar.
 // HTML5 named whitespace/format entities (standard HTML entity names).
 const htmlSpacingEntities = {"ApplyFunction": "\u2061", "InvisibleComma": "\u2063", "InvisibleTimes": "\u2062", "MediumSpace": "\u205f", "NegativeMediumSpace": "\u200b", "NegativeThickSpace": "\u200b", "NegativeThinSpace": "\u200b", "NegativeVeryThinSpace": "\u200b", "NewLine": "\n", "NoBreak": "\u2060", "NonBreakingSpace": "\u00a0", "Tab": "\t", "ThickSpace": "\u205f\u200a", "ThinSpace": "\u2009", "VeryThinSpace": "\u200a", "ZeroWidthSpace": "\u200b", "af": "\u2061", "emsp": "\u2003", "emsp13": "\u2004", "emsp14": "\u2005", "ensp": "\u2002", "hairsp": "\u200a", "ic": "\u2063", "it": "\u2062", "lrm": "\u200e", "nbsp": "\u00a0", "numsp": "\u2007", "puncsp": "\u2008", "rlm": "\u200f", "shy": "\u00ad", "thinsp": "\u2009", "zwj": "\u200d", "zwnj": "\u200c"};
+// Only presentation is projected here; machine evidence keeps its original bytes.
+function markdownLinkLabels(text) {
+  const references = new Set([...text.matchAll(/^ {0,3}\[([^\]\n]+)\]:[ \t]*(?:<[^<>\s]+>|[^\s]+)(?:[ \t]+.*)?$/gm)].map((match) => match[1].trim().replace(/\s+/g, " ").toLowerCase()));
+  let result = "";
+  for (let index = 0; index < text.length;) {
+    if (text[index] !== "[") { result += text[index++]; continue; }
+    let labelEnd = index + 1, brackets = 1;
+    for (; labelEnd < text.length && brackets; labelEnd++) {
+      if (text[labelEnd] === "\\") { labelEnd++; continue; }
+      if (text[labelEnd] === "[") brackets++;
+      if (text[labelEnd] === "]") brackets--;
+    }
+    if (!brackets && text[labelEnd] === "[") {
+      const referenceEnd = text.indexOf("]", labelEnd + 1);
+      const reference = text.slice(labelEnd + 1, referenceEnd).trim().replace(/\s+/g, " ").toLowerCase();
+      if (referenceEnd >= 0 && references.has(reference)) {
+        result += text.slice(index + 1, labelEnd - 1);
+        index = referenceEnd + 1;
+        continue;
+      }
+    }
+    if (brackets || text[labelEnd] !== "(") { result += text[index++]; continue; }
+    let destinationEnd = labelEnd + 1, parentheses = 1;
+    for (; destinationEnd < text.length && parentheses; destinationEnd++) {
+      if (text[destinationEnd] === "\\") { destinationEnd++; continue; }
+      if (text[destinationEnd] === "(") parentheses++;
+      if (text[destinationEnd] === ")") parentheses--;
+    }
+    const destination = text.slice(labelEnd + 1, destinationEnd - 1);
+    if (parentheses || /\s/.test(destination)) { result += text[index++]; continue; }
+    result += text.slice(index + 1, labelEnd - 1);
+    index = destinationEnd;
+  }
+  return result;
+}
+
+const reviewBlockTags = new Set(["address", "article", "aside", "blockquote", "br", "details", "div", "dl", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "summary", "table", "tbody", "td", "th", "thead", "tr", "ul"]);
+function htmlVisibleText(text, inlineBoundary) {
+  let result = "";
+  for (let index = 0; index < text.length;) {
+    if (text[index] !== "<") { result += text[index++]; continue; }
+    if (text.startsWith("<!--", index)) {
+      const end = text.indexOf("-->", index + 4);
+      index = end < 0 ? text.length : end + 3;
+      continue;
+    }
+    const tag = text.slice(index).match(/^<\/?([a-z][a-z0-9:-]*)(?=[\s/>])/i);
+    if (!tag) { result += text[index++]; continue; }
+    let end = index + tag[0].length, quote = null;
+    for (; end < text.length; end++) {
+      const character = text[end];
+      if (quote) { if (character === quote) quote = null; }
+      else if (character === '"' || character === "'") quote = character;
+      else if (character === ">") break;
+    }
+    if (end === text.length) { result += text.slice(index); break; }
+    if (tag[1].toLowerCase() === "img") {
+      const attributes = text.slice(index + tag[0].length, end);
+      const alt = [...attributes.matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)].find((attribute) => attribute[1].toLowerCase() === "alt");
+      if (alt) result += " " + (alt[2] ?? alt[3] ?? alt[4] ?? "") + " ";
+    }
+    result += reviewBlockTags.has(tag[1].toLowerCase()) ? " " : inlineBoundary;
+    index = end + 1;
+  }
+  return result;
+}
+
 function visibleReviewText(body, inlineBoundary = "") {
-  return String(body || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
+  const decoded = String(body || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
-  }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity)
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/<\/?(?:address|article|aside|blockquote|br|details|div|dl|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|summary|table|tbody|td|th|thead|tr|ul)\b[^>]*>/gi, " ")
-    .replace(/<[^>]*>/g, inlineBoundary)
+  }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity);
+  return htmlVisibleText(markdownLinkLabels(decoded), inlineBoundary)
     .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
@@ -455,9 +521,14 @@ export function hasUnclearedTypedFindings(comments, headSha, requestMarker, conf
 }
 
 
+// Ambiguous rendered table rows invalidate clocks; they never grant evidence.
+function isReviewRowCandidate(line, title) {
+  return line.includes("|") && visibleReviewText(line).includes(title.replaceAll("*", ""));
+}
+
 function sectionCompletionBucket(comment, kind, headSha = null) {
   const title = kind === "security_review" ? "**Security Review**" : "**Code Review**";
-  const rows = String(comment.body || "").split(/\r?\n/).filter((line) => line.startsWith("|") && line.includes(title));
+  const rows = String(comment.body || "").split(/\r?\n/).filter((line) => isReviewRowCandidate(line, title));
   if (rows.length !== 1) return NaN;
   const cells = rows[0].split("|").map((cell) => cell.trim());
   const label = kind === "security_review" ? /^(?:🛡️|🔒) \*\*Security Review\*\*$/ : /^📝 \*\*Code Review\*\*$/;
@@ -486,7 +557,7 @@ function canonicalTypedRowsAgree(comment, state, headSha) {
 function canonicalSectionClear(comment, state, kind, headSha, config, validateCompanion = true) {
   const other = kind === "code_review" ? "security_review" : "code_review";
   const otherTitle = other === "security_review" ? "**Security Review**" : "**Code Review**";
-  const otherRows = String(comment.body || "").split(/\r?\n/).filter((line) => line.startsWith("|") && line.includes(otherTitle));
+  const otherRows = String(comment.body || "").split(/\r?\n/).filter((line) => isReviewRowCandidate(line, otherTitle));
   if (validateCompanion && (otherRows.length > 1 || (otherRows.length === 1 && !removableCompanionRow(comment, state[other], other, otherRows[0])))) return false;
   const target = kind === "security_review" ? "**Security Review**" : "**Code Review**";
   const absent = { commit_sha: null, has_any_findings: null, has_unresolved_findings: null, status: null };
@@ -507,7 +578,7 @@ function validFindingCompanions(comment, state, headSha, config = {}, allowResol
   if (!state) return false;
   return Object.entries(state).every(([kind, review]) => {
     const title = kind === "security_review" ? "**Security Review**" : "**Code Review**";
-    if (Object.values(review).every((value) => value === null)) return !String(comment.body || "").split(/\r?\n/).some((line) => line.startsWith("|") && line.includes(title));
+    if (Object.values(review).every((value) => value === null)) return !String(comment.body || "").split(/\r?\n/).some((line) => isReviewRowCandidate(line, title));
     if (review.status !== "completed") return false;
     if (allowResolvedOwn && review.commit_sha === headSha && (review.has_any_findings || review.has_unresolved_findings)) return true;
     return canonicalSectionClear(comment, { ...state, [kind]: { ...review, has_any_findings: false, has_unresolved_findings: false } }, kind, review.commit_sha, config, false);

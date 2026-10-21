@@ -753,6 +753,10 @@ test('protocol discovery and partial projection preserve pending and genuine fin
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), invalidClear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   const inactiveWarning = { ...invalidClear, body: summary().replaceAll(after, before) + '\n| 🔒 **Security Review** | ⚠️ Do not merge | `2667f79` | Manual request |' };
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), inactiveWarning], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  for (const extraRow of ['🔒 **Security Review** | ✅ **Completed** <relative-time datetime="' + before + '">' + before + '</relative-time> | `2667f79` | Manual request |', '<details><summary>ℹ️ About Codex in GitHub</summary>\n> | 🛡️ **Security&#32;Review** | ✅ **Completed** <relative-time datetime="' + before + '">' + before + '</relative-time> | `2667f79` | Manual request |\n</details>']) {
+    const ambiguous = comment(summary().replaceAll(after, before) + '\n' + extraRow, { created_at: before, updated_at: before });
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), ambiguous], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  }
   for (const label of ['**Security&#32;Review**', '**Security&nbsp;Review**', '**Security <em>Review</em>**']) {
     const encodedWarning = { ...inactiveWarning, body: inactiveWarning.body.replace('**Security Review**', label) };
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), encodedWarning], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
@@ -812,11 +816,12 @@ test('canonical newer clear resolves post-request typed finding prose only', asy
 
 
 test('code-indented heading and formatted warning triggers cannot approve', () => {
+  const row = summary().split('\n').find((line) => line.startsWith('| 📝 **Code Review**'));
   assert.notEqual(classify(summary().replace('<!-- codex-pull-request-review-summary -->', '    \u00A0<!-- codex-pull-request-review-summary -->')), 'pass');
   assert.notEqual(classify(summary().replace('<!-- codex-pull-request-review-summary -->', '    \uFEFF<!-- codex-pull-request-review-summary -->')), 'pass');
-  for (const body of [summary().replace('| 📝 **Code Review**', '<!--\n| 📝 **Code Review**'), summary().replace('<relative-time', '<!-- presentation\nmetadata --><relative-time')]) assert.notEqual(classify(body), 'pass');
+  for (const body of [summary() + '\n<!--\n```html\n-->\n' + row, summary().replace('| 📝 **Code Review**', '<!--\n| 📝 **Code Review**'), summary().replace('<relative-time', '<!-- presentation\nmetadata --><relative-time')]) assert.notEqual(classify(body), 'pass');
   for (const prefix of ['    ', '\t', '\uFEFF    ', '<!-- presentation metadata -->    ']) assert.notEqual(classify(summary().replace('## Codex Review Summary', prefix + '## Codex Review Summary')), 'pass');
-  for (const trigger of ['Do **not** merge', 'Do not&nbsp;merge', 'P&#8203;1 blocker', 'Do [not](https://example.com/(x)) merge']) assert.notEqual(classify(summary().replace('Manual request', trigger)), 'pass');
+  for (const trigger of ['Do **not** merge', 'Do not&nbsp;merge', 'P&#8203;1 blocker', 'Do [not](https://example.com/(x)) merge', '<img src="invalid" alt="P1 blocker">', '[safe](P1 blocker)', 'Do [not][x] merge\n\n[x]: https://example.com']) assert.notEqual(classify(summary().replace('Manual request', trigger)), 'pass');
 });
 
 
@@ -827,11 +832,14 @@ test('rendered footer warnings cannot approve or clear findings', async () => {
   assert.notEqual(classify(adjacent), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(adjacent)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   const row = summary().split('\n').find((line) => line.startsWith('| 📝 **Code Review**'));
+  const nested = summary().replace(row, '') + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n<details><summary>inner</summary></details>\n' + row + '\n</details>';
+  assert.notEqual(classify(nested), 'pass');
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(nested)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   const collapsed = summary().replace(row, '') + '\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n' + row + '\n</details>';
   assert.notEqual(classify(collapsed), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(collapsed)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
-  for (const body of [summary().replace('| 📝 **Code Review**', '<!--\n| 📝 **Code Review**'), summary().replace('<relative-time', '<!-- presentation\nmetadata --><relative-time')]) assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
-  for (const warning of ['P&#49; blocker', 'P*1* blocker', 'Do&#32;not&#32;merge', 'Do&MediumSpace;not&MediumSpace;merge', 'Do&hairsp;not&hairsp;merge', 'Do [not](https://example.com) merge', 'P<strong>1</strong> blocker', 'Do <em>not</em> merge', 'P&#8203;1 blocker', 'Do&#8203;not&#8203;merge', 'Do&ThinSpace;not&ThinSpace;merge', 'Do&ZeroWidthSpace;not&ZeroWidthSpace;merge', 'P\uFE0F1 blocker', 'Do <sub>not</sub> merge', 'P<kbd>1</kbd> blocker', 'Do <!--hidden-->not merge', 'P<!--hidden-->1 blocker', 'P<span></span>1 blocker', 'Do<span>not</span>merge']) {
+  for (const body of [summary() + '\n<!--\n```html\n-->\n' + row, summary().replace('| 📝 **Code Review**', '<!--\n| 📝 **Code Review**'), summary().replace('<relative-time', '<!-- presentation\nmetadata --><relative-time')]) assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  for (const warning of ['P&#49; blocker', 'P*1* blocker', 'Do&#32;not&#32;merge', 'Do&MediumSpace;not&MediumSpace;merge', 'Do&hairsp;not&hairsp;merge', 'Do [not](https://example.com) merge', 'P<strong>1</strong> blocker', 'Do <em>not</em> merge', 'P&#8203;1 blocker', 'Do&#8203;not&#8203;merge', 'Do&ThinSpace;not&ThinSpace;merge', 'Do&ZeroWidthSpace;not&ZeroWidthSpace;merge', 'P\uFE0F1 blocker', 'Do <sub>not</sub> merge', 'P<kbd>1</kbd> blocker', 'Do <!--hidden-->not merge', 'P<!--hidden-->1 blocker', 'P<span></span>1 blocker', 'Do<span>not</span>merge', 'Do <span title=">">not</span> merge', 'Do [not](https://example.com/(x)) merge', '<img src="invalid" alt="P1 blocker">', '[safe](P1 blocker)', 'Do [not][x] merge\n\n[x]: https://example.com']) {
     const body = summary() + '\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n' + warning + '\n</details>';
     assert.notEqual(classify(body), 'pass');
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
