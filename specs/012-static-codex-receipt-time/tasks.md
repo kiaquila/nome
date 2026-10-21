@@ -122,3 +122,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Cover actual unused footnotes mentioned only in link destinations, with official-renderer hidden-attribute and visible-label controls.
 
 - [x] Keep quote/list raw HTML continuation indentation in the same peeled coordinate system, including combined containers.
+
+- [x] Cover actual list-before-quote raw HTML continuation using an ordered container stack.
+
+- [x] Cover official nested-angle-link rendering and actual indefinite finding statements, retaining normal-reference footnote and paragraph-boundary controls.

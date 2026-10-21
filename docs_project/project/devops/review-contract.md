@@ -79,3 +79,7 @@ Positive numeric counts attached to issue, finding, or problem nouns remain cont
 Inline HTML is removed only after its complete GFM tag grammar validates; malformed visible tags retain warnings. Footnote evidence follows case-insensitive references transitively, retaining used lazy continuations and omitting unused definitions; invalid footnote identifiers use ordinary reference parsing. Raw HTML parsing ends when its Markdown quote/list container ends.
 
 Footnote use graphs follow rendered inline labels and contents, including transitive references; hidden link destinations and HTML attributes cannot activate otherwise unused footnotes.
+
+Raw HTML continuation follows the ordered Markdown container stack, preserving both quote-before-list and list-before-quote nesting.
+
+Official GitHub rendering retains the outer destination for an angle autolink inside a Markdown link label; it does not expose that destination as warning text. Indefinite finding statements remain contrary evidence independently of reporting verbs within a paragraph; separate paragraphs do not form one statement.

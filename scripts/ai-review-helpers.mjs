@@ -376,13 +376,27 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
     else if (/^ {0,3}<!\[CDATA\[/.test(line)) terminator = /\]\]>/;
     const blankEnded = !terminator && (blockTag.test(line) || ((!index || !peel(lines[index - 1]).trim()) && completeTag.test(line)));
     if (!terminator && !blankEnded) continue;
-    const quoteDepth = (value) => (value.match(/^(?: {0,3}>[ \t]?)+/)?.[0].match(/>/g) || []).length;
-    const depth = quoteDepth(lines[index]);
-    const withoutQuotes = (value) => value.replace(/^(?: {0,3}>[ \t]?)+/, "");
-    const listPrefix = withoutQuotes(lines[index]).match(/^([ \t]*)(?:[-+*]|[0-9]{1,9}[.)])[ \t]+/);
+    const containers = [];
+    let opening = lines[index];
+    for (;;) {
+      const prefix = opening.match(/^ {0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)/);
+      if (!prefix) break;
+      containers.push(prefix[0].includes(">") ? { quote: true } : { indent: prefix[0].length });
+      opening = opening.slice(prefix[0].length);
+    }
     const withinContainer = (value) => {
-      const content = withoutQuotes(value);
-      return quoteDepth(value) >= depth && (!listPrefix || /^\s*$/.test(content) || content.length - content.trimStart().length >= listPrefix[0].length);
+      for (const container of containers) {
+        if (container.quote) {
+          const prefix = value.match(/^ {0,3}>[ \t]?/);
+          if (!prefix) return false;
+          value = value.slice(prefix[0].length);
+        } else {
+          if (!value.trim()) continue;
+          if ((value.match(/^[ \t]*/)?.[0].length || 0) < container.indent) return false;
+          value = value.slice(container.indent);
+        }
+      }
+      return true;
     };
     let end = index;
     if (terminator) { while (end < lines.length - 1 && !terminator.test(lines[end]) && withinContainer(lines[end + 1])) end++; }
@@ -422,7 +436,7 @@ function visibleReviewText(body, inlineBoundary = "") {
 }
 
 function hasPositiveFindingStatement(text) {
-  return /\b[1-9][0-9]*\s+(?:[a-z-]+\s+)*(?:issues?|findings?|problems?)\b/i.test(text) || [...text.matchAll(/\b(?:found|there (?:is|are)) ([^.!?\n]*\b(?:issues?|findings?)\b)/gi)].some((statement) =>
+  return /\b[a-z]+[ \t]+(?:an?|one)[ \t]+(?:[a-z-]+[ \t]+)*(?:issues?|findings?|problems?)\b/i.test(text) || /\b[1-9][0-9]*\s+(?:[a-z-]+\s+)*(?:issues?|findings?|problems?)\b/i.test(text) || [...text.matchAll(/\b(?:found|there (?:is|are)) ([^.!?\n]*\b(?:issues?|findings?)\b)/gi)].some((statement) =>
     statement[1].split(/\s+(?:and|but)\s+|[,;]/i).some((clause) =>
       /\b(?:issues?|findings?)\b/i.test(clause) && !/^(?:no|zero|0)\b/i.test(clause.trim())));
 }
