@@ -503,7 +503,9 @@ function validFindingCompanions(comment, state, headSha, config = {}, allowResol
 
 function hasIndentedCodexEnvelope(body) {
   const leading = String(body || "").replace(/\uFEFF/g, "").match(/^(?:[ \t\r\n]*<!--[\s\S]*?-->)*[ \t\r\n]*/)?.[0] || "";
-  return /^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/im.test(leading);
+  const heading = String(body || "").split(/\r?\n/).find((line) => /^[ \t]*## Codex Review Summary(?:\s|$)/.test(line));
+  return /^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/im.test(leading) ||
+    /^(?: {4,}|[ \t]*\t)/.test(heading || "");
 }
 
 function removableCompanionRow(comment, review, kind, row) {

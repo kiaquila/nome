@@ -37,3 +37,5 @@ Malformed completed companions retain a separate observation-time invalidation e
 Typed negative ordering is bound to the active full head and preserves configured trusted actors. Finding-bearing foreign companions require their own canonical rows, while completed coherent foreign companions retain their own clocks. Four-space/tab-indented protocol markers are Markdown examples and supply no approval, finding, or resolution authority; one-to-three-space HTML marker formatting remains supported. Mandatory preflight passed: 105 Python, 49 Node tests.
 
 Protocol-prefix detection is case-insensitive before unrelated HTML comment normalization: case-varied unknown Codex markers stay malformed and cannot clear historical findings. Final mandatory preflight passed: 105 Python, 50 Node tests.
+
+A strictly newer canonical same-section completion retires ordinary prose belonging to the resolved typed finding; raw negative prose and native unresolved findings retain their veto. Four-space/tab-indented summary headings are code examples, and visible review triggers must match the canonical request labels.

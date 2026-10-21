@@ -52,3 +52,7 @@ Native negative-presentation follow-up: genuine leading typed findings survive t
 Actual native own-clock follow-up: warning-bearing row labels, unsupported triggers and contrary finding prose cannot borrow an old completion time; canonical own-section presentation is required, independently of companion state. Metadata-prefixed malformed protocol observations remain pending (Nome discovery normalized; HA already protected). Fenced-only clean counterparts cannot resolve findings. Bounded actual-path regressions pass.
 
 Consolidated actual-native corrections passed mandatory preflight: 105 Python, 54 Node tests. Independent bounded reviewer cleared own-row warning/prose clocks, metadata discovery and fenced-clear controls.
+
+16:18 actual native counterparts: canonical newer structured completion clears post-request typed finding prose, while raw prose/equal-clock findings stay blocked. Code-indented headings supply no approval; formatted warning triggers cannot approve. Mixed-length fenced security counterparts remain rejected by the unchanged full-body parser.
+
+16:18 bounded corrections passed mandatory preflight: 105 Python, 56 Node tests; independent reviewer cleared exact recovery/heading/trigger controls.
