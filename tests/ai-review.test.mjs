@@ -755,7 +755,7 @@ test('protocol discovery and partial projection preserve pending and genuine fin
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), inactiveWarning], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   const canonical = { ...invalidClear, body: invalidClear.body.replace('⚠️ Do not merge', '🔄 **Running** since <relative-time datetime="' + before + '">' + before + '</relative-time>') };
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), canonical], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
-  for (const prefix of ['    ', '\t']) {
+  for (const prefix of ['    ', '\t', '\uFEFF    ', '<!-- presentation metadata -->    ']) {
     const todoClear = { ...canonical, body: summary().replaceAll(after, before) + '\n' + prefix + '<!-- TODO -->' };
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(oldBody, { created_at: oldTime, updated_at: oldTime }), todoClear], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   }
@@ -808,7 +808,8 @@ test('canonical newer clear resolves post-request typed finding prose only', asy
 
 
 test('code-indented heading and formatted warning triggers cannot approve', () => {
-  for (const prefix of ['    ', '\t']) assert.notEqual(classify(summary().replace('## Codex Review Summary', prefix + '## Codex Review Summary')), 'pass');
+  for (const body of [summary().replace('| 📝 **Code Review**', '<!--\n| 📝 **Code Review**'), summary().replace('<relative-time', '<!-- presentation\nmetadata --><relative-time')]) assert.notEqual(classify(body), 'pass');
+  for (const prefix of ['    ', '\t', '\uFEFF    ', '<!-- presentation metadata -->    ']) assert.notEqual(classify(summary().replace('## Codex Review Summary', prefix + '## Codex Review Summary')), 'pass');
   for (const trigger of ['Do **not** merge', 'Do not&nbsp;merge']) assert.notEqual(classify(summary().replace('Manual request', trigger)), 'pass');
 });
 
@@ -816,7 +817,8 @@ test('code-indented heading and formatted warning triggers cannot approve', () =
 test('rendered footer warnings cannot approve or clear findings', async () => {
   const time = '2026-10-14T23:00:00Z';
   const old = comment(summary({ has_any_findings: true }).replaceAll(after, time), { created_at: time, updated_at: time });
-  for (const warning of ['P&#49; blocker', 'P*1* blocker', 'Do&#32;not&#32;merge']) {
+  for (const body of [summary().replace('| 📝 **Code Review**', '<!--\n| 📝 **Code Review**'), summary().replace('<relative-time', '<!-- presentation\nmetadata --><relative-time')]) assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  for (const warning of ['P&#49; blocker', 'P*1* blocker', 'Do&#32;not&#32;merge', 'Do&MediumSpace;not&MediumSpace;merge', 'Do&hairsp;not&hairsp;merge']) {
     const body = summary() + '\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n' + warning + '\n</details>';
     assert.notEqual(classify(body), 'pass');
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');

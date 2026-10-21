@@ -122,7 +122,7 @@ function visibleReviewText(body) {
   return String(body || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
-  }).replace(/[*_~`]/g, "").replace(/\s+/g, " ");
+  }).replace(/&(?:MediumSpace|hairsp);/gi, " ").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
 export function containsBlockingSeverity(body, agent) {
@@ -512,7 +512,7 @@ function validFindingCompanions(comment, state, headSha, config = {}, allowResol
 
 function hasIndentedCodexEnvelope(body) {
   const leading = String(body || "").replace(/\uFEFF/g, "").match(/^(?:[ \t\r\n]*<!--[\s\S]*?-->)*[ \t\r\n]*/)?.[0] || "";
-  const heading = String(body || "").split(/\r?\n/).find((line) => /^[ \t]*## Codex Review Summary(?:\s|$)/.test(line));
+  const heading = String(body || "").replace(/\uFEFF/g, "").replace(/<!--(?! codex-)[^\r\n]*?-->/gi, "").split(/\r?\n/).find((line) => /^[ \t]*## Codex Review Summary(?:\s|$)/.test(line));
   return /^(?: {4,}|[ \t]*\t[ \t]*)<!-- codex-/im.test(leading) ||
     /^(?: {4,}|[ \t]*\t)/.test(heading || "");
 }
