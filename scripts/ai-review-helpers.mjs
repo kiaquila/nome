@@ -365,7 +365,7 @@ function htmlVisibleText(text, inlineBoundary, literals = [], rawBlock = false) 
       const alt = [...attributes.matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)].find((attribute) => attribute[1].toLowerCase() === "alt");
       if (alt) result += " " + (alt[2] ?? alt[3] ?? alt[4] ?? "") + " ";
     }
-    result += reviewBlockTags.has(tag[1].toLowerCase()) ? " " : inlineBoundary;
+    result += reviewBlockTags.has(tag[1].toLowerCase()) ? "\n\n" : inlineBoundary;
     index = end + 1;
   }
   return result;
@@ -410,9 +410,35 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
   const blockNames = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
   const blockTag = new RegExp("^ {0,3}</?(?:" + blockNames + ")(?=[ \\t\\f/>]|$)", "i");
   const completeTag = /^ {0,3}(?:<\/[A-Za-z][A-Za-z0-9-]*[ \t\f]*>|<[A-Za-z][A-Za-z0-9-]*(?:[ \t\f]+[^\s"'<>/=]+(?:[ \t\f]*=[ \t\f]*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*[ \t\f]*\/?>)[ \t\f]*$/;
-  let paragraph = false;
+  const expandTabs = (value) => {
+    let column = 0;
+    return value.replace(/[^\t]|\t/g, (character) => {
+      if (character !== "\t") { column++; return character; }
+      const width = 4 - column % 4; column += width; return " ".repeat(width);
+    });
+  };
+  const paragraphContext = (value) => {
+    value = expandTabs(value); const frames = [];
+    for (;;) {
+      const prefix = value.match(/^ {0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)/);
+      if (!prefix) return { content: value, frames };
+      frames.push(prefix[0].includes(">") ? { quote: true } : { indent: prefix[0].length });
+      value = value.slice(prefix[0].length);
+    }
+  };
+  const continuesParagraph = (value, frames) => {
+    value = expandTabs(value);
+    for (const frame of frames) {
+      if (frame.quote) { const prefix = value.match(/^ {0,3}>[ \t]?/); if (!prefix) return false; value = value.slice(prefix[0].length); }
+      else { if ((value.match(/^ */)?.[0].length || 0) < frame.indent) return false; value = value.slice(frame.indent); }
+    }
+    return true;
+  };
+  let paragraph = null;
   for (let index = 0; index < lines.length; index++) {
     const line = eligible[index] || "";
+    const context = paragraphContext(lines[index]);
+    if (paragraph && !continuesParagraph(lines[index], paragraph)) paragraph = null;
     const raw = line.match(/^ {0,3}<(script|pre|style|textarea)(?=[ \t\f>]|$)/i);
     let terminator = raw ? new RegExp("</" + raw[1] + "[ \\t\\f]*>", "i") : null;
     if (/^ {0,3}<!--/.test(line)) terminator = /(?:^ {0,3}<!--(?:>|->)|-->|--!>)/;
@@ -421,18 +447,11 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
     else if (/^ {0,3}<!\[CDATA\[/.test(line)) terminator = /\]\]>/;
     const blankEnded = !terminator && (blockTag.test(line) || (!paragraph && completeTag.test(line)));
     if (!terminator && !blankEnded) {
-      if (!line.trim()) paragraph = false;
-      else if (!(!paragraph && /^(?: {4}|\t|\uE002)/.test(line))) paragraph = true;
+      if (!line.trim()) paragraph = null;
+      else if (!(!paragraph && /^(?: {4}|\t|\uE002)/.test(line))) paragraph = context.frames;
       continue;
     }
-    paragraph = false;
-    const expandTabs = (value) => {
-      let column = 0;
-      return value.replace(/[^\t]|\t/g, (character) => {
-        if (character !== "\t") { column++; return character; }
-        const width = 4 - column % 4; column += width; return " ".repeat(width);
-      });
-    };
+    paragraph = null;
     const containers = [];
     let opening = expandTabs(lines[index]);
     for (;;) {
@@ -556,30 +575,34 @@ function visibleReviewText(body, inlineBoundary = "") {
 function hasPositiveFindingStatement(text) {
   const paragraphs = String(text).replace(/\r\n/g, "\n").split(/[\r\n][ \t\f\v]*[\r\n]/);
   return paragraphs.some((paragraph) => paragraph.replace(/[ \t\r\n\f\v]+/g, " ")
-    .replace(/\b(no|zero) +(?:(?!(?:issues?|findings?|problems?|bugs?)\b)[\p{L}-]+ +)+(?:and|or) +(?:(?!(?:issues?|findings?|problems?|bugs?)\b)[\p{L}-]+ +)*((?:issues?|findings?|problems?|bugs?)\b)/giu, "$1 $2")
+    .replace(/\b(no|zero) +((?:issues?|findings?|problems?|bugs?|vulnerabilit(?:y|ies))) +(?:and|or) +(?:issues?|findings?|problems?|bugs?|vulnerabilit(?:y|ies))\b/giu, "$1 $2")
+    .replace(/\b(no|zero) +(?:(?!(?:issues?|findings?|problems?|bugs?|vulnerabilit(?:y|ies)|is|are|was|were|has|have|been|get|gets|got|a|an|one|some|several|multiple)\b)[\p{L}-]+ +)+(?:and|or) +(?:(?!(?:issues?|findings?|problems?|bugs?|vulnerabilit(?:y|ies)|is|are|was|were|has|have|been|get|gets|got|a|an|one|some|several|multiple)\b)[\p{L}-]+ +)*((?:issues?|findings?|problems?|bugs?|vulnerabilit(?:y|ies))\b)/giu, "$1 $2")
     .split(/[.!?;]|(?<![0-9]),|,(?![0-9])|\b(?:and|or|but|however|yet)\b/i).some((clause) => {
       // Negating a resolution preserves the finding, unlike negating its noun.
-      clause = clause.replace(/\b(?:not|never) +(?:been +)?(?:resolved|fixed|addressed|cleared|removed|closed)\b|\b(?:is|are|was|were|has|have)n['’]t +(?:been +)?(?:resolved|fixed|addressed|cleared|removed|closed)\b/gi, " unresolved ");
-      const noun = "(?<![\\p{L}\\p{N}_\\p{Pd}])(?:issues?|findings?|problems?|bugs?)(?![\\p{L}\\p{N}_\\p{Pd}])";
+      clause = clause.replace(/\b(?:not|never) +(?:(?:be|been|being|get|gets|got|gotten|getting) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b|\b(?:is|are|was|were|has|have|had)n['’]t +(?:(?:be|been|being|get|gets|got|gotten|getting) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/gi, " unresolved ");
+      const noun = "(?<![\\p{L}\\p{N}_\\p{Pd}])(?:issues?|findings?|problems?|bugs?|vulnerabilit(?:y|ies))(?![\\p{L}\\p{N}_\\p{Pd}])";
       const isAffirmative = (match, counted = false) => {
         const before = clause.slice(0, match.index);
         const after = clause.slice(match.index + match[0].length);
         if (!counted && /^ *: *(?:no|none|zero|0+(?:,000)*)(?![\p{L}\p{N}_])/iu.test(after)) return false;
         // Scope negation to this construction, not an unrelated earlier clause.
         if (/\b(?:no|zero|not|without|never|cannot)\b|\b[\p{L}]+n['’]t\b/iu.test(match[0])) return false;
-        if (/(?:\b(?:no|zero|not|without|never|cannot)|\b[\p{L}]+n['’]t)(?: +(?:be|been|being|considered))* +$/iu.test(before)) return false;
-        if (/\b(?:resolved|fixed|addressed|cleared|removed|closed)\b/i.test(match[0])) return false;
-        if (/^ +(?:(?:that|which) +)?(?:(?:is|are|was|were|has|have|been|now) +)*(?:resolved|fixed|addressed|cleared|removed|closed)\b/i.test(after)) return false;
+        if (/(?:\b(?:no|zero|not|without|never|cannot)|\b[\p{L}]+n['’]t)(?: +(?:be|been|being|get|gets|got|gotten|getting|considered))* +$/iu.test(before)) return false;
+        if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(match[0])) return false;
+        if (/^ +(?:(?:that|which) +)?(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|now) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(after)) return false;
         return true;
       };
       const counts = [...clause.matchAll(new RegExp("(?<![\\p{L}\\p{N}_])[*_~`]*([0-9]+(?:,[0-9]{3})*)[*_~`]* +(?:[\\p{L}-]+ +)*?" + noun, "giu"))];
       if (counts.some((match) => !/^0+$/.test(match[1].replaceAll(",", "")) && isAffirmative(match, true))) return true;
       const reporting = clause.replace(new RegExp("(?<![\\p{L}\\p{N}_])[*_~`]*0+(?:,000)*[*_~`]* +(?:[\\p{L}-]+ +)*?" + noun, "giu"), (match) => " ".repeat(match.length));
       const patterns = [
+        "(?<![\\p{L}\\p{N}_] )(?:(?:a|an|one|some|several|multiple) +)?(?:(?!(?:the|this|that|these|those)\\b)[\\p{L}-]+ +)*?" + noun + "(?= *: *[^ \\t])",
         "\\b(?:found|[\\p{L}]+ed) +(?:[\\p{L}-]+ +)*?" + noun,
-        "(?:\\b(?:a|an|one|some|several|multiple|[0-9]+) +(?:[\\p{L}-]+ +)*?" + noun + "|\\bthe +" + noun + "|(?<![\\p{L}\\p{N}_] )" + noun + ")" + " +(?:(?:is|are|was|were|has|have|been|get|gets|got) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
+        "(?:\\b(?:a|an|one|some|several|multiple|[0-9]+) +(?:[\\p{L}-]+ +)*?" + noun + "|\\bthe +" + noun + "|(?<![\\p{L}\\p{N}_] )" + noun + ")" + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
         "\\bthere +(?:is|are) +(?:[\\p{L}-]+ +)*?" + noun,
-        "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+s)\\b"
+        "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+s)\\b",
+        "\\b(?:this|that|these|those) +" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+s)\\b",
+        "(?<![\\p{L}\\p{N}_] )(?:issues|findings|problems|bugs|vulnerabilities)\\b +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+)\\b"
       ];
       return patterns.some((pattern) => [...reporting.matchAll(new RegExp(pattern, "giu"))].some((match) => isAffirmative(match)));
     }));
