@@ -136,3 +136,5 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Cover Unicode ordinary references, active versus literal emphasis, clause-scoped finding/negation semantics, and independent code/security warning clocks with actual gate/evaluator regressions.
 
 - [x] Cover explicit defect/regression assertions, recurring resolved findings, qualified harmlessness, modified finding subjects, and scoped clean negation with current approval/history/recovery controls.
+
+- [x] Reject completion clocks predating comment creation and retain observation-time findings until a genuinely newer canonical recovery.
