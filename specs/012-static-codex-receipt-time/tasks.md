@@ -134,3 +134,5 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Cover actual tab-expanded container indentation, abrupt comment closers, raw legacy named spacing references, and negated finding clearance.
 
 - [x] Cover Unicode ordinary references, active versus literal emphasis, clause-scoped finding/negation semantics, and independent code/security warning clocks with actual gate/evaluator regressions.
+
+- [x] Cover explicit defect/regression assertions, recurring resolved findings, qualified harmlessness, modified finding subjects, and scoped clean negation with current approval/history/recovery controls.
