@@ -230,7 +230,7 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null, codeLit
         }
       }
       if (valid) {
-        references.add(definition[1].trim().replace(/\s+/g, " ").toLowerCase());
+        references.add(caseFoldLabel(definition[1].trim().replace(/\s+/g, " ")));
         for (let line = index; line <= consumed; line++) definitionLines.add(line);
         index = consumed;
       }
@@ -288,7 +288,7 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null, codeLit
     }
     const label = text.slice(index + 1, labelEnd - 1);
     if (/\n[ \t\f\v]*\n/.test(label.replace(/\r\n?/g, "\n"))) { result += text[index++]; continue; }
-    const labelReference = label.trim().replace(/\s+/g, " ").toLowerCase();
+    const labelReference = caseFoldLabel(label.trim().replace(/\s+/g, " "));
     let nestedLink = false;
     if (!brackets && label.includes("[")) markdownLinkLabels(label, references, () => { nestedLink = true; });
     // GFM gives an inner active link precedence; the outer destination stays literal.
@@ -301,7 +301,7 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null, codeLit
     }
     if (!brackets && text[labelEnd] === "[") {
       const referenceEnd = text.indexOf("]", labelEnd + 1);
-      const reference = text.slice(labelEnd + 1, referenceEnd).trim().replace(/\s+/g, " ").toLowerCase() || labelReference;
+      const reference = caseFoldLabel(text.slice(labelEnd + 1, referenceEnd).trim().replace(/\s+/g, " ")) || labelReference;
       if (referenceEnd >= 0 && references.has(reference)) {
         if (text[index - 1] !== "!") onLink?.();
         result += text.slice(index + 1, labelEnd - 1);
@@ -468,6 +468,61 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
   return lines.join("\n");
 }
 
+// CommonMark delimiter runs: flanking, intraword underscores, and rule of three.
+function activeMarkdownEmphasis(text) {
+  const removed = new Set();
+  const runs = [];
+  const whitespace = (value) => !value || /\s/u.test(value);
+  const punctuation = (value) => !!value && /[\p{P}\p{S}]/u.test(value);
+  const escaped = (index) => ((text.slice(0, index).match(/\\+$/)?.[0].length || 0) % 2) === 1;
+  // Matched code-span delimiters disappear; their literal content is protected
+  // by the existing code-context stage before this projection.
+  const ticks = [...text.matchAll(/`+/g)];
+  let consumed = 0;
+  for (let i = 0; i < ticks.length; i += 1) {
+    const start = ticks[i];
+    if (start.index < consumed || escaped(start.index)) continue;
+    const end = ticks.slice(i + 1).find((run) => run[0].length === start[0].length);
+    if (!end) continue;
+    for (let j = 0; j < start[0].length; j += 1) { removed.add(start.index + j); removed.add(end.index + j); }
+    consumed = end.index + end[0].length;
+  }
+  for (const match of text.matchAll(/\*+|_+|~{2,}/g)) {
+    if (escaped(match.index)) continue;
+    const before = [...text.slice(0, match.index)].at(-1) || "";
+    const after = [...text.slice(match.index + match[0].length)][0] || "";
+    const left = !whitespace(after) && (!punctuation(after) || whitespace(before) || punctuation(before));
+    const right = !whitespace(before) && (!punctuation(before) || whitespace(after) || punctuation(after));
+    runs.push({ character: match[0][0], start: match.index, length: match[0].length, usedOpen: 0, usedClose: 0,
+      open: match[0][0] === "_" ? left && (!right || punctuation(before)) : left,
+      close: match[0][0] === "_" ? right && (!left || punctuation(after)) : right });
+  }
+  for (let closeIndex = 0; closeIndex < runs.length; closeIndex += 1) {
+    const closer = runs[closeIndex];
+    if (!closer.close) continue;
+    for (let openIndex = closeIndex - 1; openIndex >= 0 && closer.length - closer.usedClose >= (closer.character === "~" ? 2 : 1); openIndex -= 1) {
+      const opener = runs[openIndex];
+      if (!opener.open || opener.character !== closer.character || /\r?\n[ \t\f\v]*\r?\n/.test(text.slice(opener.start, closer.start))) continue;
+      let availableOpen = opener.length - opener.usedOpen - opener.usedClose;
+      let availableClose = closer.length - closer.usedOpen - closer.usedClose;
+      if (availableOpen < (closer.character === "~" ? 2 : 1)) continue;
+      if (closer.character !== "~" && (opener.close || closer.open) &&
+          (availableOpen + availableClose) % 3 === 0 && (availableOpen % 3 !== 0 || availableClose % 3 !== 0)) continue;
+      while (availableOpen >= (closer.character === "~" ? 2 : 1) && availableClose >= (closer.character === "~" ? 2 : 1)) {
+        const count = availableOpen >= 2 && availableClose >= 2 ? 2 : 1;
+        for (let j = 0; j < count; j += 1) {
+          removed.add(opener.start + opener.length - opener.usedOpen - 1 - j);
+          removed.add(closer.start + closer.usedClose + j);
+        }
+        opener.usedOpen += count; closer.usedClose += count;
+        for (let nested = openIndex + 1; nested < closeIndex; nested += 1) { runs[nested].open = false; runs[nested].close = false; }
+        availableOpen -= count; availableClose -= count;
+      }
+    }
+  }
+  return text.split("").map((character, index) => removed.has(index) ? "" : character).join("");
+}
+
 function visibleReviewText(body, inlineBoundary = "") {
   // Structural parsing uses raw bytes: entities cannot create quotes, tags or links.
   const literals = [];
@@ -477,22 +532,39 @@ function visibleReviewText(body, inlineBoundary = "") {
   const protectedCode = protectMarkdownCode(htmlProtected, markdownLiterals);
   const commentsRemoved = protectedCode.replace(/<!--(?:>|->|[\s\S]*?(?:-->|--!>|$))/g,
     (comment) => comment.replace(/[^\r\n]/g, ""));
-  const rendered = markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary, literals), null, null, markdownLiterals)
+  const rendered = activeMarkdownEmphasis(markdownLinkLabels(htmlVisibleText(commentsRemoved, inlineBoundary, literals), null, null, markdownLiterals))
     .replace(/\uE000(\d+)\uE001/g, (_, index) => literals[Number(index)]);
   return rendered.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
     const point = value[0].toLowerCase() === "x" ? parseInt(value.slice(1), 16) : Number(value);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
   }).replace(/&([A-Za-z][A-Za-z0-9]*);/g, (entity, name) => htmlSpacingEntities[name] ?? entity)
     .replace(/\uE005(\d+)\uE006/g, (_, index) => blockLiterals[Number(index)])
-    .replace(/\uE002(\d+)\uE003/g, (_, index) => markdownLiterals[Number(index)])
-    .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/[*_~`]/g, "").replace(/\r\n?/g, "\n").replace(/\n[ \t\f\v]*\n/g, "\uE004").replace(/\s+/g, " ").replace(/\uE004/g, "\n\n");
+    .replace(/\uE002(\d+)\uE003/g, (_, index) => {
+      const literal = markdownLiterals[Number(index)];
+      const delimiter = literal.match(/^`+/)?.[0];
+      return delimiter && literal.endsWith(delimiter) ? literal.slice(delimiter.length, -delimiter.length) : literal;
+    })
+    .replace(/\bdo[\s\p{Default_Ignorable_Code_Point}]+not[\s\p{Default_Ignorable_Code_Point}]+merge\b/giu, "Do not merge").replace(/\p{Default_Ignorable_Code_Point}/gu, "").replace(/\r\n?/g, "\n").replace(/\n[ \t\f\v]*\n/g, "\uE004").replace(/\s+/g, " ").replace(/\uE004/g, "\n\n");
 }
 
 function hasPositiveFindingStatement(text) {
-  return [...text.matchAll(/\b[a-z]+[ \t]+(?:an?|one)[ \t]+(?:[a-z-]+[ \t]+)*(?:issues?|findings?|problems?|bugs?)\b/gi)].some((match) => !/^(?:not|no)\b/i.test(match[0]) && !/\bno[ \t]+$/i.test(text.slice(0, match.index))) || /\b[1-9][0-9]*\s+(?:[a-z-]+\s+)*(?:issues?|findings?|problems?|bugs?)\b/i.test(text) || [...text.matchAll(/\b(?:found|there (?:is|are)) ([^.!?\n]*\b(?:issues?|findings?|problems?|bugs?)\b)/gi)].some((statement) =>
-    statement[1].split(/\s+(?:and|but)\s+|[,;]/i).some((clause) =>
-      /\b(?:issues?|findings?|problems?|bugs?)\b/i.test(clause) && !/^(?:no|zero|0|not)\b/i.test(clause.trim())));
+  const paragraphs = String(text).replace(/\r\n/g, "\n").split(/[\r\n][ \t\f\v]*[\r\n]/);
+  return paragraphs.some((paragraph) => paragraph.replace(/[ \t\r\n\f\v]+/g, " ")
+    .split(/[.!?;,]|\b(?:and|or|but|however|yet)\b/i).some((clause) => {
+      if (/\b(?:no|zero|not|without|never|cannot)\b|\b[\p{L}]+n['’]t\b/iu.test(clause) ||
+          /\b(?:resolved|fixed|addressed|cleared|removed|closed)\b/i.test(clause)) return false;
+      const noun = "(?<![\\p{L}\\p{N}_\\p{Pd}])(?:issues?|findings?|problems?|bugs?)(?![\\p{L}\\p{N}_\\p{Pd}])";
+      if (!new RegExp(noun, "iu").test(clause)) return false;
+      const counts = [...clause.matchAll(new RegExp("\\b([0-9]+) +(?:[\\p{L}-]+ +)*?" + noun, "giu"))];
+      if (counts.some((match) => !/^0+$/.test(match[1]))) return true;
+      const reporting = clause.replace(new RegExp("\\b0+ +(?:[\\p{L}-]+ +)*?" + noun, "giu"), "");
+      const reportPrefix = new RegExp("\\b(?:found|[\\p{L}]+ed) +(?:[\\p{L}-]+ +)*?" + noun, "iu");
+      const reportSubject = new RegExp("(?:(?:a|an|one|some|several|multiple|[0-9]+) +)?" + noun + " +(?:(?:is|are|was|were|has|have|been) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b", "iu");
+      const existential = new RegExp("\\bthere +(?:is|are) +(?:[\\p{L}-]+ +)*?" + noun, "iu");
+      return reportPrefix.test(reporting) || reportSubject.test(reporting) || existential.test(reporting);
+    }));
 }
+
 
 export function containsBlockingSeverity(body, agent) {
   const text = agent === "codex" ? visibleReviewText(body) : String(body || "");
@@ -528,9 +600,7 @@ export function verdictTime(comment, result, headSha = null, config = {}) {
       const clocks = ["code_review", "security_review"].filter((kind) =>
         (headSha === null || state[kind].commit_sha === headSha) &&
         (state[kind].has_any_findings === true || state[kind].has_unresolved_findings === true)
-      ).map((kind) => state[kind].status === "completed" && canonicalSectionClear(comment,
-        { ...state, [kind]: { ...state[kind], has_any_findings: false, has_unresolved_findings: false } },
-        kind, state[kind].commit_sha, config) ? sectionCompletionBucket(comment, kind, state[kind].commit_sha) : NaN);
+      ).map((kind) => negativeSectionTime(comment, state, kind, state[kind].commit_sha, config));
       if (clocks.length && clocks.every(Number.isFinite)) return new Date(Math.max(...clocks) * 1000).toISOString();
     }
   }
@@ -807,9 +877,7 @@ export function hasUnclearedTypedFindings(comments, headSha, requestMarker, conf
   return evidence.some(({ comment, state }) => ["code_review", "security_review"].some((kind) => {
     const finding = state[kind];
     if (finding.commit_sha !== headSha || !(finding.has_any_findings || finding.has_unresolved_findings)) return false;
-    const sectionTime = state[kind].status === "completed" && canonicalSectionClear(comment,
-      { ...state, [kind]: { ...state[kind], has_any_findings: false, has_unresolved_findings: false } },
-      kind, headSha, config, false) ? sectionCompletionBucket(comment, kind, headSha) : NaN;
+    const sectionTime = negativeSectionTime(comment, state, kind, headSha, config);
     const findingAt = Number.isFinite(sectionTime) ? sectionTime : Math.floor(Date.parse(comment.updated_at || comment.created_at || "") / 1000);
     return !evidence.some((clean) => {
       const next = clean.state[kind];
@@ -872,6 +940,30 @@ function canonicalSectionClear(comment, state, kind, headSha, config, validateCo
 }
 
 
+// Negative clocks may scope away only a structurally validated companion row.
+function negativeSectionStructure(comment, state, kind, config) {
+  const title = kind === "security_review" ? "**Security Review**" : "**Code Review**";
+  const rows = String(comment.body || "").split(/\r?\n/).filter((line) => isReviewRowCandidate(line, title));
+  if (rows.length !== 1) return false;
+  const cells = rows[0].split("|");
+  if (cells.length !== 6) return false;
+  cells[4] = " Manual request ";
+  const structural = { ...comment, body: comment.body.replace(rows[0], cells.join("|")) };
+  return Number.isFinite(sectionCompletionBucket(structural, kind, state[kind].commit_sha)) &&
+    canonicalSectionClear(structural, { ...state, [kind]: { ...state[kind], has_any_findings: false, has_unresolved_findings: false } },
+      kind, state[kind].commit_sha, config, false);
+}
+
+function negativeSectionTime(comment, state, kind, headSha, config) {
+  if (state[kind].status !== "completed") return NaN;
+  const other = kind === "code_review" ? "security_review" : "code_review";
+  const otherTitle = other === "security_review" ? "**Security Review**" : "**Code Review**";
+  const rows = String(comment.body || "").split(/\r?\n/).filter((line) => isReviewRowCandidate(line, otherTitle));
+  if (rows.length && (state[other].status !== "completed" || !negativeSectionStructure(comment, state, other, config))) return NaN;
+  return canonicalSectionClear(comment, { ...state, [kind]: { ...state[kind], has_any_findings: false, has_unresolved_findings: false } },
+    kind, headSha, config, false) ? sectionCompletionBucket(comment, kind, headSha) : NaN;
+}
+
 // A resolved own-section finding cannot erase a newer invalid companion.
 function validFindingCompanions(comment, state, headSha, config = {}, allowResolvedOwn = false) {
   if (!state) return false;
@@ -880,7 +972,7 @@ function validFindingCompanions(comment, state, headSha, config = {}, allowResol
     if (Object.values(review).every((value) => value === null)) return !String(comment.body || "").split(/\r?\n/).some((line) => isReviewRowCandidate(line, title));
     if (review.status !== "completed") return false;
     if (allowResolvedOwn && review.commit_sha === headSha && (review.has_any_findings || review.has_unresolved_findings)) return true;
-    return canonicalSectionClear(comment, { ...state, [kind]: { ...review, has_any_findings: false, has_unresolved_findings: false } }, kind, review.commit_sha, config, false);
+    return negativeSectionStructure(comment, state, kind, config);
   });
 }
 
