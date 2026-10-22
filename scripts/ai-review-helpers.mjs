@@ -127,7 +127,7 @@ function validMarkdownDestination(raw, allowEmpty = true) {
   const destination = raw.replace(/^[ \t\n\f\v]*|[ \t\n\f\v]*$/g, "");
   if (!destination) return allowEmpty;
   if (/\\([^\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e])/.test(destination)) return false;
-  const match = destination.match(/^((?:<[^<>\s]*>|(?:\\.|[^\x00-\x20\x7f<>])+))(?:(?:[ \t\f\v]+(?:\n[ \t\f\v]*)?|\n[ \t\f\v]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?$/);
+  const match = destination.match(/^((?:<[^<>\r\n]*>|(?:\\.|[^\x00-\x20\x7f<>])+))(?:(?:[ \t\f\v]+(?:\n[ \t\f\v]*)?|\n[ \t\f\v]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?$/);
   if (!match) return false;
   if (match[1].startsWith("<")) return true;
   let depth = 0;
@@ -221,7 +221,7 @@ function markdownLinkLabels(text, knownReferences = null, onLink = null, codeLit
       let destination = definition[2] || (/^ {0,3}\S/.test(lines[destinationIndex] || "") ? lines[destinationIndex] : "");
       let valid = validMarkdownDestination(destination, false), consumed = destinationIndex;
       // A reference title can begin on the next line and continue without a blank line.
-      if ((!valid || /^(?:<[^<>\s]*>|(?:\\.|[^\s<>])+)$/.test(destination.trim())) &&
+      if ((!valid || /^(?:<[^<>\r\n]*>|(?:\\.|[^\s<>])+)$/.test(destination.trim())) &&
           /^ {0,3}["'(]/.test(lines[destinationIndex + 1] || "")) {
         let candidate = destination;
         for (let next = destinationIndex + 1; next < lines.length && !/^[ \t\f\v]*$/.test(lines[next]); next++) {
@@ -365,7 +365,7 @@ function htmlVisibleText(text, inlineBoundary, literals = [], rawBlock = false) 
       const alt = [...attributes.matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)].find((attribute) => attribute[1].toLowerCase() === "alt");
       if (alt) result += " " + (alt[2] ?? alt[3] ?? alt[4] ?? "") + " ";
     }
-    result += reviewBlockTags.has(tag[1].toLowerCase()) ? "\n\n" : inlineBoundary;
+    result += tag[1].toLowerCase() === "br" ? " " : reviewBlockTags.has(tag[1].toLowerCase()) ? "\n\n" : inlineBoundary;
     index = end + 1;
   }
   return result;
@@ -573,9 +573,10 @@ function visibleReviewText(body, inlineBoundary = "") {
 }
 
 function hasPositiveFindingStatement(text) {
+  const cardinal = "(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[ -](?:one|two|three|four|five|six|seven|eight|nine))?)";
   const paragraphs = String(text).replace(/\r\n/g, "\n").split(/[\r\n][ \t\f\v]*[\r\n]/);
   return paragraphs.some((paragraph) => paragraph.replace(/[ \t\r\n\f\v]+/g, " ")
-    .replace(/\b(?:no|zero) +(?:issues?|findings?|problems?|bugs?|flaws?|vulnerabilit(?:y|ies))[^.!?;]*?\bexcept +((?:[1-9][0-9]*|one|some|several|multiple))\b/giu, (match, count) => match + "; " + count + " findings remain")
+    .replace(new RegExp("\\b(?:no|zero) +(?:issues?|findings?|problems?|bugs?|flaws?|vulnerabilit(?:y|ies))[^.!?;]*?\\bexcept +((?:[1-9][0-9]*|some|several|multiple|" + cardinal + "))\\b([^.!?;]*)", "giu"), (match, count, suffix) => match + "; " + count + " findings" + (suffix.trim() ? suffix.replace(/^ *, */, " ") : " remain"))
     .replace(/\b(no|zero) +((?:issues?|findings?|problems?|bugs?|flaws?|vulnerabilit(?:y|ies))) +(?:and|or) +(?:issues?|findings?|problems?|bugs?|flaws?|vulnerabilit(?:y|ies))\b/giu, "$1 $2")
     .replace(/\b(no|zero) +(?:(?!(?:issues?|findings?|problems?|bugs?|flaws?|vulnerabilit(?:y|ies)|is|are|was|were|has|have|been|get|gets|got|a|an|one|some|several|multiple)\b)[\p{L}-]+ +)+(?:and|or) +(?:(?!(?:issues?|findings?|problems?|bugs?|flaws?|vulnerabilit(?:y|ies)|is|are|was|were|has|have|been|get|gets|got|a|an|one|some|several|multiple)\b)[\p{L}-]+ +)*((?:issues?|findings?|problems?|bugs?|flaws?|vulnerabilit(?:y|ies))\b)/giu, "$1 $2")
     .split(/[.!?;]|(?<![0-9]),|,(?![0-9])|\b(?:and|or|but|however|yet)\b/i).some((clause) => {
@@ -586,22 +587,22 @@ function hasPositiveFindingStatement(text) {
       const isAffirmative = (match, counted = false) => {
         const before = clause.slice(0, match.index);
         const after = clause.slice(match.index + match[0].length);
-        if (!counted && /^ *(?::|[–—-]) *(?:no|none|zero|0+(?:,000)*)(?: +(?:found|outstanding|exist|exists|remain|remains))? *$/iu.test(after)) return false;
+        if (!counted && /^ *(?::|[–—-]) *(?:no|none|zero|0+(?:,000)*)(?: +(?:(?:is|are|was|were|be|been|being|has|have|had|[\p{L}]+ly|now) +)*(?:found|outstanding|exist|exists|remain|remains))? *$/iu.test(after)) return false;
         // Scope negation to this construction, not an unrelated earlier clause.
         if (/\b(?:no|zero|not|without|never|cannot)\b|\b[\p{L}]+n['’]t\b/iu.test(match[0])) return false;
         if (/(?:\b(?:no|zero|not|without|never|cannot)|\b[\p{L}]+n['’]t)(?: +(?:be|been|being|get|gets|got|gotten|getting|considered))* +$/iu.test(before)) return false;
         const matchedNoun = [...match[0].matchAll(new RegExp(noun, "giu"))].at(-1);
         const predicate = matchedNoun ? match[0].slice(matchedNoun.index + matchedNoun[0].length) : match[0];
         const modifiers = matchedNoun ? match[0].slice(0, matchedNoun.index) : "";
-        if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(modifiers) && !/^ +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting) +)*(?:found|[\p{L}]+ed|[\p{L}]+s)\b/iu.test(predicate + after)) return false;
-        if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(predicate)) return false;
+        if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(modifiers) && !/^ +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting) +)*(?:(?:can|could|may|might|will|would|must|should) +(?:reappear|recur)|found +again|(?:still +)?(?:persists?|remains?|exists?))\b/iu.test(predicate + after)) return false;
+        if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated|harmless|benign)\b/i.test(predicate)) return false;
         if (/^(?: +| *(?::|[–—-]) *)(?:(?:that|which) +)?(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|now) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(after)) return false;
         return true;
       };
       const counts = [...clause.matchAll(new RegExp("(?<![\\p{L}\\p{N}_])[*_~`]*([0-9]+(?:,[0-9]{3})*)[*_~`]* +(?:[\\p{L}-]+ +)*?" + noun, "giu"))];
       if (counts.some((match) => !/^0+$/.test(match[1].replaceAll(",", "")) && isAffirmative(match, true))) return true;
       const reporting = clause.replace(new RegExp("(?<![\\p{L}\\p{N}_])[*_~`]*0+(?:,000)*[*_~`]* +(?:[\\p{L}-]+ +)*?" + noun, "giu"), (match) => " ".repeat(match.length));
-      const cardinalPattern = "\\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[ -](?:one|two|three|four|five|six|seven|eight|nine))?) +(?:[\\p{L}-]+ +)*?" + noun;
+      const cardinalPattern = "\\b" + cardinal + " +(?:[\\p{L}-]+ +)*?" + noun;
       if ([...reporting.matchAll(new RegExp(cardinalPattern, "giu"))].some((match) => isAffirmative(match, true))) return true;
       const patterns = [
         "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:can|could|may|might|will|would|must|should) +[\\p{L}-]+|[\\p{L}]+s)\\b",
@@ -610,11 +611,11 @@ function hasPositiveFindingStatement(text) {
         "\\b(?:this|that|these|those) +(?:is|are|was|were) +(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun,
         "(?<![\\p{L}\\p{N}_] )\\b(?:(?:a|an|one|some|several|multiple) +)?(?:(?!(?:the|this|that|these|those)\\b)[\\p{L}-]+ +)*?" + headingNoun + "(?= *(?::|[–—-]) *[^ \\t])",
         "\\b(?:found|[\\p{L}]+ed) +(?:[\\p{L}-]+ +)*?" + noun,
-        "(?:\\b(?:a|an|one|some|several|multiple|[0-9]+) +(?:[\\p{L}-]+ +)*?" + noun + "|\\bthe +" + noun + "|(?<![\\p{L}\\p{N}_] )" + noun + ")" + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
-        "\\bthere +(?:is|are) +(?:[\\p{L}-]+ +)*?" + noun,
+        "(?:\\b(?:a|an|one|some|several|multiple|[0-9]+) +(?:[\\p{L}-]+ +)*?" + noun + "|\\bthe +" + noun + "|(?<![\\p{L}\\p{N}_] )" + noun + ")" + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
+        "\\bthere +(?:still +)?(?:is|are) +(?:[\\p{L}-]+ +)*?" + noun,
         "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+s)\\b",
         "\\b(?:this|that|these|those) +" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+s)\\b",
-        "(?<![\\p{L}\\p{N}_] )(?:issues|findings|problems|bugs|flaws|vulnerabilities)\\b +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+)\\b"
+        "(?:\\b(?:both|many|all) +|(?<![\\p{L}\\p{N}_] ))(?:issues|findings|problems|bugs|flaws|vulnerabilities)\\b +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+)\\b"
       ];
       return patterns.some((pattern) => [...reporting.matchAll(new RegExp(pattern, "giu"))].some((match) => isAffirmative(match)));
     }));
@@ -809,7 +810,7 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
         !(result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
           hasUnclearedTypedFindings(comments, headSha, requestMarker, config))) result = null;
     if (result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
-        validFindingCompanions(comment, validatedTypedState(comment), headSha, config, true) &&
+        !hasIndependentSecurityWarning(comment, headSha) && validFindingCompanions(comment, validatedTypedState(comment), headSha, config, true) &&
         !hasUnclearedTypedFindings(comments, headSha, requestMarker, config)) result = "neutral";
     if (result === "pass" && !isAfterRequest(comment, requestMarker, verdictTime(comment, result, headSha, config))) result = null;
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
@@ -920,6 +921,13 @@ export function hasCurrentHeadTypedFinding(comment, headSha) {
 
 // Negative facts belong to the canonical leading envelope. Later finding
 // presentation cannot erase them; approval and resolution still parse the full body.
+export function hasIndependentSecurityWarning(comment, headSha) {
+  if (!/\bsecurity review failed\b/i.test(visibleReviewText(comment?.body))) return false;
+  const security = leadingNegativeState(comment)?.security_review;
+  return !security || security.commit_sha !== headSha ||
+    !(security.has_any_findings === true || security.has_unresolved_findings === true);
+}
+
 function leadingNegativeState(comment) {
   if (hasIndentedCodexEnvelope(comment?.body)) return null;
   const body = String(comment?.body || "").trim().replace(/<!--(?! codex-)[\s\S]*?-->/gi, "").trim();
