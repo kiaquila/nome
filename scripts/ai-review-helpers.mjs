@@ -555,9 +555,9 @@ function hasPositiveFindingStatement(text) {
           /\b(?:resolved|fixed|addressed|cleared|removed|closed)\b/i.test(clause)) return false;
       const noun = "(?<![\\p{L}\\p{N}_\\p{Pd}])(?:issues?|findings?|problems?|bugs?)(?![\\p{L}\\p{N}_\\p{Pd}])";
       if (!new RegExp(noun, "iu").test(clause)) return false;
-      const counts = [...clause.matchAll(new RegExp("\\b([0-9]+) +(?:[\\p{L}-]+ +)*?" + noun, "giu"))];
+      const counts = [...clause.matchAll(new RegExp("(?<![\\p{L}\\p{N}_])[*_~`]*([0-9]+)[*_~`]* +(?:[\\p{L}-]+ +)*?" + noun, "giu"))];
       if (counts.some((match) => !/^0+$/.test(match[1]))) return true;
-      const reporting = clause.replace(new RegExp("\\b0+ +(?:[\\p{L}-]+ +)*?" + noun, "giu"), "");
+      const reporting = clause.replace(new RegExp("(?<![\\p{L}\\p{N}_])[*_~`]*0+[*_~`]* +(?:[\\p{L}-]+ +)*?" + noun, "giu"), "");
       const reportPrefix = new RegExp("\\b(?:found|[\\p{L}]+ed) +(?:[\\p{L}-]+ +)*?" + noun, "iu");
       const reportSubject = new RegExp("(?:(?:a|an|one|some|several|multiple|[0-9]+) +)?" + noun + " +(?:(?:is|are|was|were|has|have|been) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b", "iu");
       const existential = new RegExp("\\bthere +(?:is|are) +(?:[\\p{L}-]+ +)*?" + noun, "iu");
