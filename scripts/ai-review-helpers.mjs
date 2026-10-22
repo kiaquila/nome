@@ -576,13 +576,13 @@ function hasPositiveFindingStatement(text) {
   const cardinal = "(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[ -](?:one|two|three|four|five|six|seven|eight|nine))?)";
   const paragraphs = String(text).replace(/\r\n/g, "\n").split(/[\r\n][ \t\f\v]*[\r\n]/);
   return paragraphs.some((paragraph) => paragraph.replace(/[ \t\r\n\f\v]+/g, " ")
-    .replace(new RegExp("\\b(?:no|zero) +(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies))[^.!?;]*?\\bexcept +((?:[1-9][0-9]*|some|several|multiple|" + cardinal + "))\\b([^.!?;]*)", "giu"), (match, count, suffix) => match + "; " + count + " findings" + (suffix.trim() ? suffix.replace(/^ *, */, " ") : " remain"))
-    .replace(/\b(no|zero) +((?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies))) +(?:and|or) +(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies))\b/giu, "$1 $2")
-    .replace(/\b(no|zero) +(?:(?!(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|is|are|was|were|has|have|been|get|gets|got|a|an|one|some|several|multiple)\b)[\p{L}-]+ +)+(?:and|or) +(?:(?!(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|is|are|was|were|has|have|been|get|gets|got|a|an|one|some|several|multiple)\b)[\p{L}-]+ +)*((?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies))\b)/giu, "$1 $2")
+    .replace(new RegExp("\\b(?:no|zero) +(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?)[^.!?;]*?\\bexcept +((?:[1-9][0-9]*|some|several|multiple|" + cardinal + "))\\b([^.!?;]*)", "giu"), (match, count, suffix) => match + "; " + count + " findings" + (suffix.trim() ? suffix.replace(/^ *, */, " ") : " remain"))
+    .replace(/\b(no|zero) +((?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?)) +(?:and|or) +(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?)\b/giu, "$1 $2")
+    .replace(/\b(no|zero) +(?:(?!(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?|is|are|was|were|has|have|been|get|gets|got|a|an|one|some|several|multiple)\b)[\p{L}-]+ +)+(?:and|or) +(?:(?!(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?|is|are|was|were|has|have|been|get|gets|got|a|an|one|some|several|multiple)\b)[\p{L}-]+ +)*((?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?)\b)/giu, "$1 $2")
     .split(/[.!?;]|(?<![0-9]),|,(?![0-9])|\b(?:and|or|but|however|yet)\b/i).some((clause) => {
       // Negating a resolution preserves the finding, unlike negating its noun.
       clause = clause.replace(/\b(?:not|never) +(?:(?:be|been|being|get|gets|got|gotten|getting) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b|\b(?:is|are|was|were|has|have|had)n['’]t +(?:(?:be|been|being|get|gets|got|gotten|getting) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/gi, " unresolved ");
-      const noun = "(?<![\\p{L}\\p{N}_\\p{Pd}])(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies))(?![\\p{L}\\p{N}_\\p{Pd}])(?! +(?:tests?|reports?)\\b)";
+      const noun = "(?<![\\p{L}\\p{N}_\\p{Pd}])(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?)(?![\\p{L}\\p{N}_\\p{Pd}])(?! +(?:tests?|reports?)\\b)";
       const headingNoun = noun.replace("(?![\\p{L}\\p{N}_\\p{Pd}])", "(?![\\p{L}\\p{N}_-])");
       const isAffirmative = (match, counted = false) => {
         const before = clause.slice(0, match.index);
@@ -599,6 +599,7 @@ function hasPositiveFindingStatement(text) {
         if (/^ +(?:do|does|did) +not +(?:exist|exists|remain|remains) *$/iu.test(tail)) return false;
         if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated) +$/iu.test(before)) return false;
         const recurrence = /\b(?:reappears?|reappeared|recurs?|recurred|reopens?|reopened|found +again|(?:still +)?(?:persists?|remains?|exists?))\b/iu.test(tail) && !/\b(?:not|never) +(?:reappear|reappeared|recur|recurred|reopen|reopened|persist|remain|exist)\b/iu.test(tail);
+        if (/\b(?:resolves|fixes|addresses|clears|removes|closes|eliminates) +(?:a|an) +/iu.test(modifiers) && !recurrence) return false;
         const obligation = /\b(?:can|could|may|might|will|would|must|should) +(?:(?:be|been|being|get|gets|got) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/iu.test(tail);
         if (obligation) return true;
         if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(modifiers) && !recurrence && !/^ +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting) +)*(?:can|could|may|might|will|would|must|should) +(?:reappear|recur|reopen)\b/iu.test(tail)) return false;
@@ -618,12 +619,13 @@ function hasPositiveFindingStatement(text) {
         "\\b(?:this|that|these|those) +(?:(?:code|security|blocking|critical|high|medium|low|major|minor|unresolved|open|new|resolved|fixed|addressed|cleared|removed|closed|eliminated) +)*" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|[\\p{L}]+s)\\b",
         "\\b(?:this|that|these|those) +(?:is|are|was|were) +(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun,
         "(?<![\\p{L}\\p{N}_] )\\b(?:(?:a|an|one|some|several|multiple) +)?(?:(?!(?:the|this|that|these|those)\\b)[\\p{L}-]+ +)*?" + headingNoun + "(?= *(?::|[–—-]) *[^ \\t])",
-        "\\b(?:found|introduces|creates|contains|has|[\\p{L}]+ed) +(?:[\\p{L}-]+ +)*?" + noun,
+        "\\b(?:found|[\\p{L}]+ed) +(?:[\\p{L}-]+ +)*?" + noun,
+        "\\b[\\p{L}]+s +(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun,
         "(?:\\b(?:a|an|one|some|several|multiple|[0-9]+) +(?:[\\p{L}-]+ +)*?" + noun + "|\\bthe +" + noun + "|(?<![\\p{L}\\p{N}_] )" + noun + ")" + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
         "\\bthere +(?:still +)?(?:is|are) +(?:[\\p{L}-]+ +)*?" + noun,
         "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+s)\\b",
         "\\b(?:this|that|these|those) +" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+s)\\b",
-        "(?:\\b(?:both|many|all) +|(?<![\\p{L}\\p{N}_] ))(?:issues|findings|problems|bugs|flaws|defects|regressions|vulnerabilities)\\b +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+)\\b"
+        "(?:\\b(?:both|many|all) +|(?<![\\p{L}\\p{N}_] ))(?:issues|findings|problems|bugs|flaws|defects|regressions|vulnerabilities|security +risks)\\b +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+)\\b"
       ];
       return patterns.some((pattern) => [...reporting.matchAll(new RegExp(pattern, "giu"))].some((match) => isAffirmative(match)));
     }));
@@ -652,6 +654,8 @@ export function extractCodexPriority(body) {
 function codeCompletionTime(comment) {
   const rows = String(comment?.body || "").split(/\r?\n/).filter((line) => line.startsWith("|") && line.includes("**Code Review**"));
   if (rows.length !== 1) return null;
+  const cells = rows[0].split("|").map((cell) => cell.trim());
+  if (cells.length !== 6 || cells[1] !== "📝 **Code Review**" || cells[5] !== "" || !["Manual request", "Automatic review"].includes(cells[4])) return null;
   const match = rows[0].match(/\| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \|/);
   const value = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
   const edited = Date.parse(comment?.updated_at || comment?.created_at || "");
@@ -1020,7 +1024,8 @@ function negativeSectionStructure(comment, state, kind, config) {
   const cells = rows[0].split("|");
   if (cells.length !== 6) return false;
   if (state[kind].has_any_findings === true || state[kind].has_unresolved_findings === true) cells[4] = " Manual request ";
-  const structural = { ...comment, body: comment.body.replace(rows[0], cells.join("|")) };
+  // Companion structure supplies no completion authority; only the owning clock is creation-bound.
+  const structural = { ...comment, created_at: "1970-01-01T00:00:00Z", body: comment.body.replace(rows[0], cells.join("|")) };
   return Number.isFinite(sectionCompletionBucket(structural, kind, state[kind].commit_sha)) &&
     canonicalSectionClear(structural, { ...state, [kind]: { ...state[kind], has_any_findings: false, has_unresolved_findings: false } },
       kind, state[kind].commit_sha, config, false);
@@ -1063,7 +1068,7 @@ function removableCompanionRow(comment, review, kind, row) {
   if (cells.length !== 6 || !label.test(cells[1]) || cells[3] !== "`" + review.commit_sha.slice(0, 7) + "`" ||
       !["Manual request", "Automatic review"].includes(cells[4])) return false;
   if (review.status === "completed") return /^✅ \*\*Completed\*\* /.test(cells[2]) &&
-    Number.isFinite(sectionCompletionBucket(comment, kind, review.commit_sha));
+    Number.isFinite(sectionCompletionBucket({ ...comment, created_at: "1970-01-01T00:00:00Z" }, kind, review.commit_sha));
   if (!["running", "in_progress"].includes(review.status)) return false;
   const match = cells[2].match(/^🔄 \*\*Running\*\* since <relative-time datetime="([^"]+)">([^<]+)<\/relative-time>$/);
   const time = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
