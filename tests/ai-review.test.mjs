@@ -831,6 +831,15 @@ test('rendered footer warnings cannot approve or clear findings', async () => {
   const contiguousLegacy = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>Do&nbsp not&nbsp merge</details>';
   assert.notEqual(classify(contiguousLegacy), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(contiguousLegacy)] })), 'pass');
+  for (const unresolvedStatement of ['1 bug is not fixed', 'There is an issue that was not resolved', 'This is not safe because there is a bug.', 'Found 1,000 issues.']) {
+    const body = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>' + unresolvedStatement + '</details>';
+    const editedOld = { ...old, body: old.body + body.slice(summary().length), updated_at: '2026-10-15T12:00:00Z' };
+    const newerClear = comment(summary().replaceAll(after, '2026-10-15T13:00:00Z'), { created_at: '2026-10-15T13:00:00Z', updated_at: '2026-10-15T13:00:00Z' });
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, editedOld, comment(summary())] })), 'pass', unresolvedStatement);
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, editedOld, newerClear] })), 'pass', unresolvedStatement);
+    assert.notEqual(classify(body), 'pass', unresolvedStatement);
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)] })), 'pass', unresolvedStatement);
+  }
   const rawWrappedCount = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>Found **1** issue</details>';
   assert.notEqual(classify(rawWrappedCount), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(rawWrappedCount)] })), 'pass');
