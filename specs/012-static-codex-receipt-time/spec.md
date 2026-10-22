@@ -12,3 +12,6 @@ Prevent edits to a static clean receipt from renewing approval freshness or supe
 
 ## Negative scenarios
 Old clean receipt edited after a new request; old clean receipt edited after a later pending machine state; SHA-less legacy positive edited after its request boundary.
+
+- Negative presentation recognizes raw HTML blocks after code without allowing them to interrupt a paragraph.
+- Only an explicitly finding-bearing typed companion may isolate its warning trigger from the other channel’s completion clock; contradictory clean companions remain observation-time invalidators.
