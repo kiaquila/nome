@@ -817,7 +817,7 @@ test('canonical newer clear resolves post-request typed finding prose only', asy
     assert.notEqual(await evaluateAiReviewEvidence({ request: rawApi.request, repository: 'o/r', prNumber: 1, headSha: head, agent: 'codex', config }), 'pass');
   }
   const clean = comment(summary().replaceAll(after, later), { created_at: later, updated_at: later });
-  for (const prose of ['P1 defect', 'Changes requested', 'Review pending']) {
+  for (const prose of ['P1 defect', 'Changes requested', 'Review pending', 'Code Review: P1 defect. Security review failed.']) {
     const typed = comment(summary({ has_any_findings: true }) + '\n' + prose);
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, typed, clean] })), 'pass');
   }
@@ -1017,7 +1017,7 @@ test('closer-only emphasis preserves long visible warning checks', async () => {
 });
 
 test('mention recurrence and negated authentication subject retain their polarity', async () => {
-  for (const [prose, clean] of [['Can bypass authentication without credentials.', false], ['No unauthenticated users can bypass authentication.', true], ['The review mentioned a bug that remains fixed.', true], ['The review mentioned a bug that remains resolved.', true], ['The review mentioned a bug that remains closed.', true], ['One bug fix remains incomplete.', false], ['Users are able to bypass authentication.', false], ['The review mentioned a bug that remains.', false], ['We discussed a bug that persists.', false], ['The review mentioned a bug that remains unresolved.', false], ['We discussed a bug that remains open.', false], ['Users are not able to bypass authentication.', true], ['No users are able to bypass authentication.', true], ['No users can bypass authentication.', true]]) {
+  for (const [prose, clean] of [['The review mentioned a bug that is open.', false], ['We discussed a vulnerability that is outstanding.', false], ['Security issue&colon; remains unresolved.', false], ['Nobody can bypass authentication.', true], ['Can bypass authentication without credentials.', false], ['No unauthenticated users can bypass authentication.', true], ['The review mentioned a bug that remains fixed.', true], ['The review mentioned a bug that remains resolved.', true], ['The review mentioned a bug that remains closed.', true], ['One bug fix remains incomplete.', false], ['Users are able to bypass authentication.', false], ['The review mentioned a bug that remains.', false], ['We discussed a bug that persists.', false], ['The review mentioned a bug that remains unresolved.', false], ['We discussed a bug that remains open.', false], ['Users are not able to bypass authentication.', true], ['No users are able to bypass authentication.', true], ['No users can bypass authentication.', true]]) {
     const body = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>' + prose + '</details>';
     const result = await evaluate(evidenceApi({ comments: [markerComment, comment(body)] }));
     if (clean) assert.equal(result, 'pass'); else assert.notEqual(result, 'pass');
