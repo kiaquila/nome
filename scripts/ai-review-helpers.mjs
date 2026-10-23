@@ -494,38 +494,65 @@ function protectHtmlBlockMarkdown(text, inlineBoundary, literals, blockLiterals)
 }
 
 // CommonMark delimiter runs: flanking, intraword underscores, and rule of three.
+function isEscapedMarkdownStart(text, index) {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === "\\"; cursor -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
+}
+
+// Code contexts display link syntax literally; protect their opening bracket
+// until visible entities are decoded, after all Markdown transformations.
+
+function nextEqualTickRuns(ticks) {
+  const nextByLength = new Map();
+  const successors = new Array(ticks.length);
+  for (let index = ticks.length - 1; index >= 0; index -= 1) {
+    const length = ticks[index][0].length;
+    successors[index] = nextByLength.get(length);
+    nextByLength.set(length, ticks[index]);
+  }
+  return successors;
+}
+
+// CommonMark delimiter runs: flanking, intraword underscores, and rule of three.
+
 function activeMarkdownEmphasis(text) {
   const removed = new Set();
   const runs = [];
   const whitespace = (value) => !value || /\s/u.test(value);
   const punctuation = (value) => !!value && /[\p{P}\p{S}]/u.test(value);
-  const escaped = (index) => ((text.slice(0, index).match(/\\+$/)?.[0].length || 0) % 2) === 1;
+  const escaped = (index) => isEscapedMarkdownStart(text, index);
   // Matched code-span delimiters disappear; their literal content is protected
   // by the existing code-context stage before this projection.
   const ticks = [...text.matchAll(/`+/g)];
+  const nextTicks = nextEqualTickRuns(ticks);
   let consumed = 0;
   for (let i = 0; i < ticks.length; i += 1) {
     const start = ticks[i];
     if (start.index < consumed || escaped(start.index)) continue;
-    const end = ticks.slice(i + 1).find((run) => run[0].length === start[0].length);
+    const end = nextTicks[i];
     if (!end) continue;
     for (let j = 0; j < start[0].length; j += 1) { removed.add(start.index + j); removed.add(end.index + j); }
     consumed = end.index + end[0].length;
   }
   for (const match of text.matchAll(/\*+|_+|~{2,}/g)) {
     if (escaped(match.index)) continue;
-    const before = [...text.slice(0, match.index)].at(-1) || "";
-    const after = [...text.slice(match.index + match[0].length)][0] || "";
+    const beforeIndex = match.index - (match.index >= 2 && /[\uDC00-\uDFFF]/.test(text[match.index - 1]) && /[\uD800-\uDBFF]/.test(text[match.index - 2]) ? 2 : 1);
+    const before = beforeIndex >= 0 ? String.fromCodePoint(text.codePointAt(beforeIndex)) : "";
+    const afterIndex = match.index + match[0].length;
+    const after = afterIndex < text.length ? String.fromCodePoint(text.codePointAt(afterIndex)) : "";
     const left = !whitespace(after) && (!punctuation(after) || whitespace(before) || punctuation(before));
     const right = !whitespace(before) && (!punctuation(before) || whitespace(after) || punctuation(after));
     runs.push({ character: match[0][0], start: match.index, length: match[0].length, usedOpen: 0, usedClose: 0,
       open: match[0][0] === "_" ? left && (!right || punctuation(before)) : left,
       close: match[0][0] === "_" ? right && (!left || punctuation(after)) : right });
   }
+  const eligibleOpeners = new Map();
   for (let closeIndex = 0; closeIndex < runs.length; closeIndex += 1) {
     const closer = runs[closeIndex];
-    if (!closer.close) continue;
-    for (let openIndex = closeIndex - 1; openIndex >= 0 && closer.length - closer.usedClose >= (closer.character === "~" ? 2 : 1); openIndex -= 1) {
+    const candidates = eligibleOpeners.get(closer.character) || [];
+    if (closer.close) for (let candidate = candidates.length - 1; candidate >= 0 && closer.length - closer.usedClose >= (closer.character === "~" ? 2 : 1); candidate -= 1) {
+      const openIndex = candidates[candidate];
       const opener = runs[openIndex];
       if (!opener.open || opener.character !== closer.character || /\r?\n[ \t\f\v]*\r?\n/.test(text.slice(opener.start, closer.start))) continue;
       let availableOpen = opener.length - opener.usedOpen - opener.usedClose;
@@ -544,9 +571,14 @@ function activeMarkdownEmphasis(text) {
         availableOpen -= count; availableClose -= count;
       }
     }
+    if (closer.open) {
+      candidates.push(closeIndex);
+      eligibleOpeners.set(closer.character, candidates);
+    }
   }
   return text.split("").map((character, index) => removed.has(index) ? "" : character).join("");
 }
+
 
 function visibleReviewText(body, inlineBoundary = "") {
   // Structural parsing uses raw bytes: entities cannot create quotes, tags or links.
@@ -582,7 +614,7 @@ function hasPositiveFindingStatement(text) {
     .split(/[.!?;]|(?<![0-9]),|,(?![0-9])|\b(?:and|or|but|however|yet)\b/i).some((clause) => {
       // Negating a resolution preserves the finding, unlike negating its noun.
       clause = clause.replace(/\b(?:not|never) +(?:(?:be|been|being|get|gets|got|gotten|getting) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b|\b(?:is|are|was|were|has|have|had)n['’]t +(?:(?:be|been|being|get|gets|got|gotten|getting) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/gi, " unresolved ");
-      const noun = "(?<![\\p{L}\\p{N}_\\p{Pd}])(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?)(?![\\p{L}\\p{N}_\\p{Pd}])(?! +(?:tests?|reports?)\\b)";
+      const noun = "(?<![\\p{L}\\p{N}_\\p{Pd}])(?:issues?|findings?|problems?|bugs?|flaws?|defects?|regressions?|vulnerabilit(?:y|ies)|security +risks?)(?![\\p{L}\\p{N}_\\p{Pd}])(?! +(?:tests?|reports?|fix(?:es)?)\\b)";
       const headingNoun = noun.replace("(?![\\p{L}\\p{N}_\\p{Pd}])", "(?![\\p{L}\\p{N}_-])");
       const isAffirmative = (match, counted = false) => {
         const before = clause.slice(0, match.index);
@@ -595,6 +627,8 @@ function hasPositiveFindingStatement(text) {
         const predicate = matchedNoun ? match[0].slice(matchedNoun.index + matchedNoun[0].length) : match[0];
         const modifiers = matchedNoun ? match[0].slice(0, matchedNoun.index) : "";
         const tail = predicate + after;
+        // An informational mention does not assert that the named finding exists.
+        if (/\b(?:mention(?:s|ed|ing)?|discuss(?:es|ed|ing)?) +/iu.test(modifiers)) return false;
         // Absence/resolution is evidence only for an unqualified completed assertion.
         if (/^ +(?:do|does|did) +not +(?:exist|exists|remain|remains) *$/iu.test(tail)) return false;
         if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated) +$/iu.test(before)) return false;
@@ -614,6 +648,7 @@ function hasPositiveFindingStatement(text) {
       const patterns = [
         "\\b(?:is|are) +vulnerable +to\\b",
         "\\bauthentication +(?:can|could|may|might) +be +bypassed\\b",
+        "\\b(?:can|could|may|might) +bypass +authentication\\b",
         "\\b(?:most|every|numerous) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
           "(?<![\\p{L}\\p{N}_] )\\b(?:the +)?(?:(?:critical|security|authentication|code|blocking|high|medium|low|major|minor|unresolved|open|new) +)+" + noun + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:(?:is|are|was|were) +[\\p{L}]+|found|[\\p{L}]+ed|[\\p{L}]+s|remains?|exists?)\\b",
         "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:can|could|may|might|will|would|must|should) +[\\p{L}-]+|[\\p{L}]+s)\\b",
@@ -633,7 +668,6 @@ function hasPositiveFindingStatement(text) {
       return patterns.some((pattern) => [...reporting.matchAll(new RegExp(pattern, "giu"))].some((match) => isAffirmative(match)));
     }));
 }
-
 
 export function containsBlockingSeverity(body, agent) {
   const text = agent === "codex" ? visibleReviewText(body) : String(body || "");
@@ -825,7 +859,7 @@ export function latestCodexSummaryResult(comments, headSha, requestMarker, confi
         !(result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
           hasUnclearedTypedFindings(comments, headSha, requestMarker, config))) result = null;
     if (result === "fail" && hasCurrentHeadTypedFinding(comment, headSha) &&
-        !hasIndependentSecurityWarning(comment, headSha) && validFindingCompanions(withoutAttributedFindingProse(comment, headSha), validatedTypedState(comment), headSha, config, true) &&
+        !hasIndependentSecurityWarning(comment, headSha, config) && validFindingCompanions(withoutAttributedFindingProse(comment, headSha, config), validatedTypedState(comment), headSha, config, true) &&
         !hasUnclearedTypedFindings(comments, headSha, requestMarker, config)) result = "neutral";
     if (result === "pass" && !isAfterRequest(comment, requestMarker, verdictTime(comment, result, headSha, config))) result = null;
     const triggerAt = requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt;
@@ -936,7 +970,7 @@ export function hasCurrentHeadTypedFinding(comment, headSha) {
 
 // Negative facts belong to the canonical leading envelope. Later finding
 // presentation cannot erase them; approval and resolution still parse the full body.
-function withoutAttributedFindingProse(comment, headSha) {
+function withoutAttributedFindingProse(comment, headSha, config = {}) {
   const state = leadingNegativeState(comment);
   return { ...comment, body: String(comment?.body || "").split(/\r?\n/).filter((line) => {
     if (line.startsWith("|")) {
@@ -944,7 +978,7 @@ function withoutAttributedFindingProse(comment, headSha) {
         const section = state?.[kind];
         const title = kind === "code_review" ? "📝 **Code Review**" : "**Security Review**";
         if (section?.commit_sha === headSha && (section.has_any_findings === true || section.has_unresolved_findings === true) &&
-            line.includes(title) && negativeSectionStructure(comment, state, kind, {})) return false;
+            line.includes(title) && negativeSectionStructure(comment, state, kind, config)) return false;
       }
     }
     if (/[<>|]/.test(line)) return true;
@@ -956,8 +990,8 @@ function withoutAttributedFindingProse(comment, headSha) {
   }).join("\n") };
 }
 
-export function hasIndependentSecurityWarning(comment, headSha) {
-  return containsBlockingSeverity(withoutAttributedFindingProse(comment, headSha).body, "codex");
+export function hasIndependentSecurityWarning(comment, headSha, config = {}) {
+  return containsBlockingSeverity(withoutAttributedFindingProse(comment, headSha, config).body, "codex");
 }
 
 function leadingNegativeState(comment) {

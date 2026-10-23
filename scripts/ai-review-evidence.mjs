@@ -83,7 +83,7 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
       const hasNegativeEvidence = reviews.some((review) =>
         classifyCodexNativeReview(review, reviewComments, headSha, config) === "fail") ||
         hasUnclearedTypedFindings(comments, headSha, marker, config) ||
-        comments.some((comment) => (!hasCurrentHeadTypedFinding(comment, headSha) || hasIndependentSecurityWarning(comment, headSha)) &&
+        comments.some((comment) => (!hasCurrentHeadTypedFinding(comment, headSha) || hasIndependentSecurityWarning(comment, headSha, config)) &&
           (afterRequest(comment.updated_at) || afterRequest(comment.created_at)) &&
           classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
       const freshNative = latestCodexNativeReviewResult(reviews.filter((review) => afterRequest(review.submitted_at)), reviewComments, headSha, config);
