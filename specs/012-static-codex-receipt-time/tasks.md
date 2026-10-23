@@ -138,3 +138,8 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Cover explicit defect/regression assertions, recurring resolved findings, qualified harmlessness, modified finding subjects, and scoped clean negation with current approval/history/recovery controls.
 
 - [x] Reject completion clocks predating comment creation and retain observation-time findings until a genuinely newer canonical recovery.
+
+
+- [x] Replace semantic harmlessness as completion authority with a closed native presentation contract; retain hostile and unknown-presentation regressions.
+- [x] Cover observed receipt endings, exact trailing task links and null lifecycle independence.
+- [ ] Repeat mandatory preflight and obtain genuine exact-head native review for the final contract.

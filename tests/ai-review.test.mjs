@@ -41,7 +41,7 @@ test("real receipt, legacy, curly apostrophe and official footer pass", () => {
     assert.equal(classify(receipt.replace(":rocket:", closing)), "pass", closing);
     assert.notEqual(classify(receipt.replace(":rocket:", `${closing} P2 remains`)), "pass");
   }
-  assert.equal(classify(receipt.replace(":rocket:", "Keep it up!") + '\n\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n<br/>\nReviews are triggered when you comment "@codex review".\n</details>'), "pass");
+  assert.equal(classify(receipt.replace(":rocket:", "Keep it up!") + '\n\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n<br/>\n[Your team has set up Codex to review pull requests in this repo](https://chatgpt.com/codex/cloud/settings/general). Reviews are triggered when you\n- Open a pull request for review\n- Mark a draft as ready\n- Comment "@codex review".\n\nIf Codex has suggestions, it will comment; otherwise it will react with 👍.\n</details>'), "pass");
   assert.equal(isAcceptableCodexSummaryComment(comment(legacy), head), false);
 });
 
@@ -451,8 +451,7 @@ test("unseen closings require an authoritative later structured verdict", () => 
   const trusted = { login: 'chatgpt-codex-connector[bot]' };
   const request = { agent: 'codex', sha: head, requestedAt: '2026-10-15T01:00:00Z' };
   const make = (body, timestamp = '2026-10-15T02:00:00Z') => ({ id: 7, user: trusted, body, created_at: timestamp, updated_at: timestamp });
-  for (const closing of ['Swish!', "You're on a roll.", 'Another round soon, please!', "Chef's kiss.",
-    'May your coffee stay warm.', 'Authentication leaks credentials.', 'The deployment deletes all customer data.']) {
+  for (const closing of ['May your coffee stay warm.', 'Authentication leaks credentials.', 'The deployment deletes all customer data.']) {
     const unknown = make(`<!-- codex-review-receipt:v1 -->\nCodex Review: Didn't find any major issues. ${closing}\n\n**Reviewed commit:** \`${head}\``);
     assert.notEqual(classifyReceipt(unknown, head, request), 'pass', closing);
     const clean = make(summary().replaceAll('2026-10-15T10:01:00Z', '2026-10-15T03:00:00Z').replaceAll('2026-10-15T02:00:00Z', '2026-10-15T03:00:00Z'), '2026-10-15T03:00:00Z');
@@ -471,7 +470,7 @@ test("unseen closings require an authoritative later structured verdict", () => 
 
 
 test("actual gate requires newer structured authority and pending wins equal time", async () => {
-  const unknown = comment(receipt.replace(':rocket:', 'Swish!'));
+  const unknown = comment(receipt.replace(':rocket:', 'May your coffee stay warm.'));
   const clean = comment(summary());
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, unknown, { ...clean, body: clean.body.replaceAll(after, later), updated_at: later }] })), 'pass');
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, clean, { ...unknown, updated_at: later }] })), 'pending');
@@ -817,7 +816,7 @@ test('canonical newer clear resolves post-request typed finding prose only', asy
     assert.notEqual(await evaluateAiReviewEvidence({ request: rawApi.request, repository: 'o/r', prNumber: 1, headSha: head, agent: 'codex', config }), 'pass');
   }
   const clean = comment(summary().replaceAll(after, later), { created_at: later, updated_at: later });
-  for (const prose of ['P1 defect', 'Changes requested', 'Review pending', 'Code Review: P1 defect. Security review failed.']) {
+  for (const prose of ['P1 defect', 'Changes requested', 'Review pending', 'Code Review: P1 defect. Security review failed.', 'Code Review: P1 defect; Security review failed.', 'Code Review: P1 defect — Security review failed.', 'Code Review: P1 defect, Security review failed.']) {
     const typed = comment(summary({ has_any_findings: true }) + '\n' + prose);
     assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, typed, clean] })), 'pass');
   }
@@ -849,7 +848,7 @@ test('rendered footer warnings cannot approve or clear findings', async () => {
   const time = '2026-10-14T23:00:00Z';
   const old = comment(summary({ has_any_findings: true }).replaceAll(after, time), { created_at: time, updated_at: time });
   const resolvedEdit = { ...old, body: old.body + '\n<details><summary>ℹ️ About Codex in GitHub</summary>A security issue got eliminated.</details>', updated_at: '2026-10-15T12:00:00Z' };
-  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, resolvedEdit, comment(summary())] })), 'pass');
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, resolvedEdit, comment(summary())] })), 'pass');
   const contiguousLegacy = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>Do&nbsp not&nbsp merge</details>';
   assert.notEqual(classify(contiguousLegacy), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(contiguousLegacy)] })), 'pass');
@@ -866,11 +865,11 @@ test('rendered footer warnings cannot approve or clear findings', async () => {
   assert.notEqual(classify(rawWrappedCount), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(rawWrappedCount)] })), 'pass');
   const balancedPlain = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n[safe [plain]](P1)</details>';
-  assert.equal(classify(balancedPlain), 'pass');
+  assert.notEqual(classify(balancedPlain), 'pass');
   for (const protectedPresentation of ['paragraph\n<span>\n[safe](P1)', 'P_1 is not a priority token', 'P*1', 'P_1_', '`P*1*`', '[safe]: /url\n  "title [^note]"\n[^note]: P1']) {
     const body = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n' + protectedPresentation + '\n</details>';
-    assert.equal(classify(body), 'pass');
-    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)] })), 'pass');
+    assert.notEqual(classify(body), 'pass');
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(body)] })), 'pass');
   }
   const securityRow = (when, label = '**Security Review**', short = '2667f79') => '\n| 🔒 ' + label + ' | ✅ **Completed** <relative-time datetime="' + when + '">' + when + '</relative-time> | `' + short + '` | Manual request |';
   const securityState = { commit_sha: head, status: 'completed', has_any_findings: false, has_unresolved_findings: false };
@@ -882,28 +881,28 @@ test('rendered footer warnings cannot approve or clear findings', async () => {
   assert.notEqual(classify(unbalancedFooter), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(unbalancedFooter)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   const escapedBackticks = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n\\`[safe](P1)\\`</details>';
-  assert.equal(classify(escapedBackticks), 'pass');
-  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(escapedBackticks)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  assert.notEqual(classify(escapedBackticks), 'pass');
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(escapedBackticks)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   const hiddenHtmlAttribute = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n<div>\n<span title="P1">safe</span>\n</div>\n</details>';
-  assert.equal(classify(hiddenHtmlAttribute), 'pass');
+  assert.notEqual(classify(hiddenHtmlAttribute), 'pass');
   for (const literalEntity of ['<span>P&#49</span> blocker', '<span>Do&#32not&#32merge</span>', '`P&#49` blocker']) {
     const body = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n' + literalEntity + '\n</details>';
-    assert.equal(classify(body), 'pass');
+    assert.notEqual(classify(body), 'pass');
   }
   const rawEntityFooter = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary><span>P&#49</span> blocker</details>';
   assert.notEqual(classify(rawEntityFooter), 'pass');
   for (const cleanRendered of ['Users are not able to bypass authentication.', 'No users are able to bypass authentication.', 'No users can bypass authentication.', 'This patch documents a bug fix.', 'This release includes a bug fix.', 'The review mentioned a bug fix.', 'We discussed a bug.', 'Users cannot bypass authentication.', 'Users can no longer bypass authentication.', 'The application is not vulnerable to SQL injection.', 'Authentication cannot be bypassed.', 'Authentication can no longer be bypassed.', 'I never see a bug.', 'We do not identify an issue.', 'We prevent a bug.', 'I resolve an issue.', 'This change prevents a bug.', 'This patch mitigates an issue.', 'This avoids a regression.', 'This change fixes a bug.', 'This change resolves an issue.', 'This change never causes a regression.', 'This patch does not expose a vulnerability.', 'The words security issues were documented below.', 'No security risk remains.', 'No security risks remain.', 'A security risk was resolved.', 'Regression tests passed.', 'One regression test passed.', 'One defect report was closed.', 'Fixed one issue.', 'Issues do not exist.', 'Bugs do not remain.', 'No issues were found except one already fixed.', 'No findings are pending.', 'No issues remain unresolved.', 'The issue is harmless.', 'The issue is benign.', 'Security issues: none were found.', 'Security issues: none are outstanding.', 'Security issue: none currently exist.', 'No issues were found except one, which was fixed.', 'An eliminated issue was documented.', 'Found 1 fixed issue.', 'Security issues: none found.', 'Security issues: zero outstanding.', 'Security issue: none exist.', 'This is not an issue.', 'That is not a bug.', 'Security issue: was fixed.', 'The words security issues: documented below.', 'No issues or findings were found.', 'A security issue got eliminated.', 'Issues found: none', 'No code or security issues were found.', 'The word issues is emphasized.', 'No code or security issues were found.', 'Found an issue that is resolved.', 'This is not an issue.', 'This isn’t a bug.', 'This is not considered a bug.', 'This is a bug-free change', 'No longer an issue.', 'This is no longer an issue.', 'There is not an issue.', 'There is no bug.', 'Found zero bugs.', 'Found\n\na bug.', '[safe <https://example.com>](P1)', '[safe]: https://example.test/[^note]\n\n[^note]: P1', 'Found\n\nan issue.', '<span title="[^note]">safe</span>\n\n[^note]: P1', '[safe](https://example.test/[^note])\n\n[^note]: P1 example', '[^doc]: safe\n  P1', '[^doc]: safe\n    P1', '[^bad label]: P1', 'note[^bad label]\n\n[^bad label]: P1', '> <div>\n[safe](P1)', '- <div>\n[safe](P1)', '[safe](' + '('.repeat(32) + 'P1' + ')'.repeat(32) + ')', '[safe][doc]\n\n[doc]: ' + '('.repeat(32) + 'P1' + ')'.repeat(32), '[safe](<' + '('.repeat(33) + 'P1' + ')'.repeat(33) + '>)', '<div>\n</span P1>\n</div>']) {
     const body = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n' + cleanRendered + '\n</details>';
-    assert.equal(classify(body), 'pass');
+    assert.notEqual(classify(body), 'pass');
   }
   const unusedFootnote = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n[^doc]: P1\n</details>';
-  assert.equal(classify(unusedFootnote), 'pass');
+  assert.notEqual(classify(unusedFootnote), 'pass');
   const commentPipe = summary().replace('Manual request', 'Manual <!-- | --> request');
   assert.notEqual(classify(commentPipe), 'pass');
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(commentPipe)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   const referenceDestination = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n[safe][doc]\n\n[doc]: https://example.test/P1</details>';
-  assert.equal(classify(referenceDestination), 'pass');
-  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(referenceDestination)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
+  assert.notEqual(classify(referenceDestination), 'pass');
+  assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, old, comment(referenceDestination)], reviews: [formal({ state: 'APPROVED' })] })), 'pass');
   for (const rawTag of ['script', 'style']) {
     const opaqueDetails = summary().replace(summary().split('\n').find((line) => line.startsWith('| 📝 **Code Review**')), '') + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n<' + rawTag + '>\n</details>\n</' + rawTag + '>\n' + summary().split('\n').find((line) => line.startsWith('| 📝 **Code Review**')) + '\n</details>';
     assert.notEqual(classify(opaqueDetails), 'pass');
@@ -911,12 +910,12 @@ test('rendered footer warnings cannot approve or clear findings', async () => {
   }
   for (const cleanCount of ['This is not an issue.', 'This isn’t a bug.', 'This is not considered a bug.', 'This is a bug-free change', 'No longer an issue.', 'This is no longer an issue.', 'There is not an issue.', 'Found no issues.', 'Found zero issues.', 'Found 0 issues.', 'Found **0** issues.', 'Found <em>no</em> issues.', 'Found <code>0</code> issues.', 'Found 0 code issues and 0 security issues.', 'There is no issue.']) {
     const cleanFooter = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>' + cleanCount + '</details>';
-    assert.equal(classify(cleanFooter), 'pass', cleanCount);
+    assert.notEqual(classify(cleanFooter), 'pass', cleanCount);
     const editedOld = { ...old, body: old.body + cleanFooter.slice(summary().length), updated_at: '2026-10-15T12:00:00Z' };
-    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, editedOld, comment(summary())] })), 'pass');
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, editedOld, comment(summary())] })), 'pass');
   }
   const softLineLabel = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>\n\n[safe\nlabel](P1)</details>';
-  assert.equal(classify(softLineLabel), 'pass');
+  assert.notEqual(classify(softLineLabel), 'pass');
   const appendedPassive = { ...old, body: old.body + '\nAn issue was detected.', updated_at: '2026-10-15T12:00:00Z' };
   assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, appendedPassive, comment(summary())] })), 'pass');
   const lateFooterFinding = { ...old, body: old.body + '\n<details><summary>ℹ️ About Codex in GitHub</summary>P1 blocker</details>', updated_at: '2026-10-15T12:00:00Z' };
@@ -1017,10 +1016,10 @@ test('closer-only emphasis preserves long visible warning checks', async () => {
 });
 
 test('mention recurrence and negated authentication subject retain their polarity', async () => {
-  for (const [prose, clean] of [['The review mentioned a bug that is open.', false], ['We discussed a vulnerability that is outstanding.', false], ['Security issue&colon; remains unresolved.', false], ['Nobody can bypass authentication.', true], ['Can bypass authentication without credentials.', false], ['No unauthenticated users can bypass authentication.', true], ['The review mentioned a bug that remains fixed.', true], ['The review mentioned a bug that remains resolved.', true], ['The review mentioned a bug that remains closed.', true], ['One bug fix remains incomplete.', false], ['Users are able to bypass authentication.', false], ['The review mentioned a bug that remains.', false], ['We discussed a bug that persists.', false], ['The review mentioned a bug that remains unresolved.', false], ['We discussed a bug that remains open.', false], ['Users are not able to bypass authentication.', true], ['No users are able to bypass authentication.', true], ['No users can bypass authentication.', true]]) {
+  for (const [prose, clean] of [['We discussed two bugs.', true], ['The review mentioned 2 bugs.', true], ['The review mentioned a bug that is still open.', false], ['The review mentioned a security issue that is still open.', false], ['A security issue was not found.', true], ['None of the findings remain.', true], ['It is possible to bypass authentication.', false], ['The review mentioned a bug that has not been fixed.', false], ['Neither user can bypass authentication.', true], ['None can bypass authentication.', true], ['The mentioned vulnerability allows code execution.', false], ['The discussed vulnerability is exploitable.', false], ['Users can trivially bypass authentication.', false], ['The review mentioned a bug that is open.', false], ['We discussed a vulnerability that is outstanding.', false], ['Security issue&colon; remains unresolved.', false], ['Nobody can bypass authentication.', true], ['Can bypass authentication without credentials.', false], ['No unauthenticated users can bypass authentication.', true], ['The review mentioned a bug that remains fixed.', true], ['The review mentioned a bug that remains resolved.', true], ['The review mentioned a bug that remains closed.', true], ['One bug fix remains incomplete.', false], ['Users are able to bypass authentication.', false], ['The review mentioned a bug that remains.', false], ['We discussed a bug that persists.', false], ['The review mentioned a bug that remains unresolved.', false], ['We discussed a bug that remains open.', false], ['Users are not able to bypass authentication.', true], ['No users are able to bypass authentication.', true], ['No users can bypass authentication.', true]]) {
     const body = summary() + '\n<details><summary>ℹ️ About Codex in GitHub</summary>' + prose + '</details>';
     const result = await evaluate(evidenceApi({ comments: [markerComment, comment(body)] }));
-    if (clean) assert.equal(result, 'pass'); else assert.notEqual(result, 'pass');
+    assert.notEqual(result, 'pass', prose);
   }
 });
 
@@ -1031,4 +1030,38 @@ test('missing populated companion keeps the newer negative observation', async (
   const fresh = '2026-10-15T04:00:00Z';
   const newer = comment(summary().replaceAll(after, fresh), { created_at: fresh, updated_at: fresh });
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, old, comment(summary()), newer] })), 'pass');
+});
+
+
+test('observed native closing catalog is bounded by whole verdict and exact SHA', () => {
+  const closings = [":+1:", ":rocket:", ":tada:", "👍", "🚀", "🎉", "Already looking forward to the next diff.", "Another round soon, please!", "Bravo.", "Breezy!", "Can't wait for the next one!", "Chef's kiss.", "Delightful!", "Hooray!", "Keep it up!", "Keep them coming!", "More of your lovely PRs please.", "Nice work!", "Swish!", "What shall we delve into next?", "You're on a roll."];
+  for (const closing of closings) {
+    const body = `<!-- codex-review-receipt:v1 -->\nCodex Review: Didn't find any major issues. ${closing}\n\n**Reviewed commit:** \`${head}\``;
+    assert.equal(classifyReceipt(comment(body), head, marker), 'pass', closing);
+    assert.equal(classifyReceipt(comment(body + '\n[View task →](https://chatgpt.com/s/cd_' + 'a'.repeat(32) + ')'), head, marker), 'pass', closing);
+    for (const invalid of [body.replace(closing + '\n', closing + ' Authentication leaks credentials.\n'), body.replace(head, 'a'.repeat(40)), body + '\nP1 defect', body + '\n[View task →](https://example.test/task)']) assert.notEqual(classifyReceipt(comment(invalid), head, marker), 'pass', invalid);
+  }
+});
+
+test('null completion pairs only with immutable exact-head receipt from its own window', () => {
+  const lifecycle = comment(summary({has_any_findings: null, has_unresolved_findings: null}), {updated_at: later});
+  const valid = comment(`<!-- codex-review-receipt:v1 -->\nCodex Review: Didn't find any major issues. Bravo.\n\n**Reviewed commit:** \`${head}\``);
+  assert.notEqual(selectSummary([lifecycle], head, marker), 'pass');
+  assert.equal(selectSummary([valid, lifecycle], head, marker), 'pass');
+  for (const trigger of ['Manual request', 'Automatic review', 'PR opened']) {
+    assert.equal(classifyReceipt(comment(summary().replaceAll('Manual request', trigger)), head, marker), 'pass');
+    assert.equal(selectSummary([valid, {...lifecycle, body: lifecycle.body.replaceAll('Manual request', trigger)}], head, marker), 'pass');
+  }
+  for (const invalid of [{...valid, updated_at: later}, {...valid, body: valid.body.replace(head, 'a'.repeat(40))}, {...valid, created_at: '2026-10-15T02:30:00Z', updated_at: '2026-10-15T02:30:00Z'}]) assert.notEqual(selectSummary([invalid, lifecycle], head, marker), 'pass');
+  assert.notEqual(selectSummary([valid, {...lifecycle, body: lifecycle.body + '\nUnknown text.'}], head, marker), 'pass');
+});
+
+
+test('unknown presentation cannot backdate a negative before its observed edit', async () => {
+  const old = comment(summary({has_any_findings: true}).replaceAll(after, before) + '\n<details><summary>ℹ️ About Codex in GitHub</summary>A pleasant review.</details>', {created_at: before, updated_at: '2026-10-15T12:00:00Z'});
+  assert.notEqual(await evaluate(evidenceApi({comments: [markerComment, old, comment(summary())]})), 'pass');
+  const equal = comment(summary().replaceAll(after, '2026-10-15T12:00:00Z'), {created_at: '2026-10-15T12:00:00Z', updated_at: '2026-10-15T12:00:00Z'});
+  assert.notEqual(await evaluate(evidenceApi({comments: [markerComment, old, equal]})), 'pass');
+  const fresh = comment(summary().replaceAll(after, '2026-10-15T13:00:00Z'), {created_at: '2026-10-15T13:00:00Z', updated_at: '2026-10-15T13:00:00Z'});
+  assert.equal(await evaluate(evidenceApi({comments: [markerComment, old, fresh]})), 'pass');
 });

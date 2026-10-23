@@ -12,6 +12,32 @@ Review should focus first on risks that matter for a private assistant:
 AI review evidence is advisory until branch protection is configured to require
 it. Human ownership remains the final merge gate.
 
+## Native presentation authority
+
+Completion clocks and finding clearance use a closed native body: the strict
+leading schema, heading, canonical contiguous review table and, optionally, one
+exact observed Codex help footer. The recognized triggers are `Manual request`,
+`Automatic review` and `PR opened`. Unknown prose or Markdown cannot establish a
+completion clock, even when it looks harmless or contains negated findings.
+A typed negative in such a body keeps its server observation time; only a
+strictly newer canonical own-channel clear can retire it. Existing independent
+raw warnings, native findings and unresolved threads retain their vetoes.
+
+Static replies require the entire no-findings verdict, a finite observed native
+closing and the existing SHA/request binding. Only one exact service-owned
+`View task →` link may follow. A contrary suffix or an arbitrary link is not
+approval. Friendly wording never overrides the strict structured state.
+
+A canonical completed code lifecycle with both finding flags null is not a
+verdict. It can accompany a valid immutable SHA-bound receipt only if that
+receipt was created after the current request and summary creation, and no later
+than the code section's own valid completion clock. Null lifecycle alone,
+unknown presentation, active security, mixed flags and reactions cannot approve.
+
+The rendering and semantic helpers described below serve conservative negative
+and independent-warning checks. They never turn free-form prose into canonical
+completion authority.
+
 ## Modern receipt closings and authoritative state
 
 Unknown receipt closing prose alone never establishes approval. Modern native reviews supply a separate authoritative structured `codex-review-state:v1` summary; its current-request exact-head completed code verdict with explicit false findings flags permits new friendly closings without a phrase-list update. Security state must be entirely null or same-head completed with both flags false. Exact schema/types, duplicate detection, trusted author, request freshness and latest invalidation remain mandatory. A newer pending, malformed or contrary structured state invalidates older success; a later or equal-time unknown receipt remains pending and requires a fresh authoritative summary. Existing P0-P2, timeline, head and unresolved-thread vetoes remain in force.
