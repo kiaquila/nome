@@ -1,5 +1,11 @@
 import {
   isAcceptableClaudeComment,
+  verdictTime,
+  hasUnclearedTypedFindings,
+  hasCurrentHeadTypedFinding,
+  hasIndependentSecurityWarning,
+  isCodexReviewSignal,
+  isTrustedReviewLogin,
   classifyCodexNativeReview,
   classifyCodexSummaryComment,
   isAcceptableNativeReview,
@@ -76,10 +82,21 @@ export async function evaluateAiReviewEvidence({ request, repository, prNumber, 
       // request never resolves a finding or dismisses a current-head failure.
       const hasNegativeEvidence = reviews.some((review) =>
         classifyCodexNativeReview(review, reviewComments, headSha, config) === "fail") ||
-        comments.some((comment) => classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
+        hasUnclearedTypedFindings(comments, headSha, marker, config) ||
+        comments.some((comment) => (!hasCurrentHeadTypedFinding(comment, headSha) || hasIndependentSecurityWarning(comment, headSha, config)) &&
+          (afterRequest(comment.updated_at) || afterRequest(comment.created_at)) &&
+          classifyCodexSummaryComment(comment, headSha, marker, config) === "fail");
       const freshNative = latestCodexNativeReviewResult(reviews.filter((review) => afterRequest(review.submitted_at)), reviewComments, headSha, config);
       const summary = latestCodexSummaryResult(comments, headSha, marker, config, timeline);
+      const bucket = (value) => Math.floor(Date.parse(value || "") / 1000);
+      const latestComment = Math.max(...comments.filter((comment) =>
+        isTrustedReviewLogin(comment.user?.login, "codex", config) && isCodexReviewSignal(comment.body)
+      ).map((comment) => bucket(verdictTime(comment, classifyCodexSummaryComment(comment, headSha, marker, config), headSha, config))).filter(Number.isFinite));
+      const latestNative = Math.max(...reviews.filter((review) => afterRequest(review.submitted_at) &&
+        classifyCodexNativeReview(review, reviewComments, headSha, config) === "pass"
+      ).map((review) => bucket(review.submitted_at)).filter(Number.isFinite));
       if (hasNegativeEvidence || summary === "fail") result = "fail";
+      else if (freshNative === "pass" && latestNative > latestComment) result = "pass";
       else if (summary === "pending") result = "pending";
       else if (freshNative === "pass" || summary === "pass") result = "pass";
     } else if (reviews.some((review) => afterRequest(review.submitted_at) && isAcceptableNativeReview(review, agent, headSha, config))) result = "pass";
