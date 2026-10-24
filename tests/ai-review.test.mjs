@@ -1090,3 +1090,40 @@ test('late receipts cannot retire an unpaired null lifecycle', async () => {
     assert.equal(outcome === "pass", expected, outcome);
   }
 });
+
+
+test('positive security companion is bounded by observation while carried completion remains valid', async () => {
+  const row = (time, display = time) => `| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="${time}">${display}</relative-time> | \`${head.slice(0, 7)}\` | Manual request |`;
+  const body = (status) => summary({}, completed) + '\n' + status;
+  for (const status of [row(after), row('2026-10-15T02:00:00.999Z'), row(before)]) {
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(body(status))] })), 'pass', status);
+  }
+  const fractionalObservation = '2026-10-15T02:00:00.500Z';
+  for (const section of ['code_review', 'security_review']) {
+    for (const [completion, expected] of [['2026-10-15T02:00:00.999Z', true], ['2026-10-15T02:00:01.100Z', false]]) {
+      let rendered = body(row(after));
+      if (section === 'code_review') rendered = rendered.replace(after, completion).replace(after, completion);
+      else rendered = body(row(completion));
+      const record = comment(rendered, { updated_at: fractionalObservation });
+      assert.equal(await evaluate(evidenceApi({ comments: [markerComment, record] })) === 'pass', expected, section + completion);
+    }
+  }
+  for (const status of [row('invalid', 'P1: Do not merge'), row('invalid'), row(after, 'P1: Do not merge'), row(after, before), row('2026-10-15T02:00:01Z'), row(later), row('2026-02-30T02:00:00Z'), row(after).replace(/ <relative-time[^>]*>[^<]*<\/relative-time>/, '')]) {
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(body(status))] })), 'pass', status);
+  }
+});
+
+
+test('null lifecycle retires through independent code clear while security retains its own veto', async () => {
+  const at = (hour) => `2026-10-15T0${hour}:00:00Z`;
+  const row = (time) => `| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="${time}">${time}</relative-time> | \`${head.slice(0, 7)}\` | Manual request |`;
+  const snapshot = (code, security, codeAt, secAt, created, updated, id) => comment(summary(code, security).replaceAll(after, codeAt) + (secAt ? '\n' + row(secAt) : ''), { id, created_at: created, updated_at: updated });
+  const lifecycle = snapshot({ has_any_findings: null, has_unresolved_findings: null }, absent, at(2), null, at(2), at(3), 920);
+  const codeClear = snapshot({}, { ...completed, has_any_findings: true, has_unresolved_findings: true }, at(4), at(4), at(4), at(4), 921);
+  const secClear = snapshot({}, completed, at(2), at(5), at(2), at(5), 922);
+  const current = comment(receipt, { id: 923, created_at: at(6), updated_at: at(6) });
+  const equalCode = snapshot({}, { ...completed, has_any_findings: true, has_unresolved_findings: true }, at(3), at(3), at(3), at(3), 924);
+  for (const [comments, expected] of [[[lifecycle, codeClear, current], false], [[lifecycle, secClear, current], false], [[lifecycle, equalCode, secClear, current], false], [[lifecycle, codeClear, secClear, current], true]]) {
+    const result = await evaluate(evidenceApi({ comments: [markerComment, ...comments] })); assert.equal(result === 'pass', expected, result);
+  }
+});

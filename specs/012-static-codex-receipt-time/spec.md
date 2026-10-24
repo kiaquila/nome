@@ -24,3 +24,7 @@ Only canonical native heading/table/schema and the exact observed informational 
 An unpaired completed null/null code lifecycle observed during the current request remains pending even if a later static receipt exists outside its completion window. A strictly newer closed canonical machine clear may retire that lifecycle. Same-window immutable exact-head receipt pairing remains valid; equal-time clears, edited receipts and late receipts cannot supply approval.
 
 Lifecycle retirement compares the newer canonical own completion against the lifecycle server observation/edit second. A canonical clear between the old completion and that observation, or in the same observed second, remains insufficient.
+
+A positive completed Security companion must have its canonical matching timestamp no later than server observation precision. Valid carried completion may predate comment creation; own-section clearance keeps its existing separate creation bound.
+
+Lifecycle retirement accepts a strictly newer canonical own Code clear independently of the companion Security verdict. Security findings retain their separate veto until their own genuinely newer canonical clearance. Completion upper bounds use the exclusive end of the server observed whole second, including fractional server timestamps; a timestamp in the following second cannot supply authority.
