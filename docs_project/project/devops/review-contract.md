@@ -129,3 +129,5 @@ Unpaired lifecycle retirement requires a canonical own completion strictly after
 A positive completed Security companion must have its canonical matching timestamp no later than server observation precision. Valid carried completion may predate comment creation; own-section clearance keeps its existing separate creation bound.
 
 Lifecycle retirement accepts a strictly newer canonical own Code clear independently of the companion Security verdict. Security findings retain their separate veto until their own genuinely newer canonical clearance. Completion upper bounds use the exclusive end of the server observed whole second, including fractional server timestamps; a timestamp in the following second cannot supply authority.
+
+A removable running companion requires an empty trailing table cell, matching completed-row structural validation. Extra-cell warnings and unknown text cannot disappear during historical own-section clearance; canonical running companions remain supported and a newer genuine canonical own clear may recover.

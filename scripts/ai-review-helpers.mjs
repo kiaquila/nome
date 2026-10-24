@@ -1580,7 +1580,7 @@ function removableCompanionRow(comment, review, kind, row) {
   if (!review?.commit_sha) return false;
   const cells = row.split("|").map((cell) => cell.trim());
   const label = kind === "security_review" ? /^(?:🛡️|🔒) \*\*Security Review\*\*$/ : /^📝 \*\*Code Review\*\*$/;
-  if (cells.length !== 6 || !label.test(cells[1]) || cells[3] !== "`" + review.commit_sha.slice(0, 7) + "`" ||
+  if (cells.length !== 6 || cells[5] !== "" || !label.test(cells[1]) || cells[3] !== "`" + review.commit_sha.slice(0, 7) + "`" ||
       !["Manual request", "Automatic review", "PR opened"].includes(cells[4])) return false;
   if (review.status === "completed") return /^✅ \*\*Completed\*\* /.test(cells[2]) &&
     Number.isFinite(sectionCompletionBucket({ ...comment, created_at: "1970-01-01T00:00:00Z", updated_at: comment.updated_at || comment.created_at }, kind, review.commit_sha));
@@ -1589,7 +1589,7 @@ function removableCompanionRow(comment, review, kind, row) {
   const time = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
   return Number.isFinite(time) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(match[1]) &&
     new Date(time).toISOString().slice(0, 19) === match[1].slice(0, 19) &&
-    time <= Date.parse(comment.updated_at || comment.created_at || "") + 999;
+    time < (Math.floor(Date.parse(comment.updated_at || comment.created_at || "") / 1000) + 1) * 1000;
 }
 
 
