@@ -1269,7 +1269,26 @@ function hasPairedLifecycleReceipt(comment, comments, headSha, requestMarker, co
   });
 }
 
+
+// A neutral lifecycle has no approval to order against a later static reply.
+// Retire an unpaired current-request lifecycle only with a newer closed machine clear.
+function hasUnpairedNullLifecycle(comments, headSha, requestMarker, config) {
+  const requested = Date.parse(requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt || "");
+  return comments.some((lifecycle) => {
+    const code = validatedTypedState(lifecycle)?.code_review;
+    if (code?.has_any_findings !== null || code?.has_unresolved_findings !== null ||
+        Date.parse(lifecycle.updated_at || lifecycle.created_at || "") < requested ||
+        classifyCodexSummaryComment(lifecycle, headSha, requestMarker, config) !== "neutral" ||
+        hasPairedLifecycleReceipt(lifecycle, comments, headSha, requestMarker, config)) return false;
+    const observed = Math.floor(Date.parse(lifecycle.updated_at || lifecycle.created_at || "") / 1000);
+    return !comments.some((clear) => String(clear.body || "").trim().startsWith(summaryMarker) &&
+      classifyCodexSummaryComment(clear, headSha, requestMarker, config) === "pass" &&
+      Math.floor(Date.parse(codeCompletionTime(clear) || "") / 1000) > observed);
+  });
+}
+
 export function latestCodexSummaryResult(comments, headSha, requestMarker, config = {}, timeline = []) {
+  if (hasUnpairedNullLifecycle(comments, headSha, requestMarker, config)) return "pending";
   return comments.map((comment) => {
     let result = classifyCodexSummaryComment(comment, headSha, requestMarker, config);
     const unrecognized = result === null;

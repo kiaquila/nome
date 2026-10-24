@@ -1065,3 +1065,28 @@ test('unknown presentation cannot backdate a negative before its observed edit',
   const fresh = comment(summary().replaceAll(after, '2026-10-15T13:00:00Z'), {created_at: '2026-10-15T13:00:00Z', updated_at: '2026-10-15T13:00:00Z'});
   assert.equal(await evaluate(evidenceApi({comments: [markerComment, old, fresh]})), 'pass');
 });
+
+
+test('late receipts cannot retire an unpaired null lifecycle', async () => {
+  const completed = Date.parse(after);
+  const observedAt = new Date(completed + 60000).toISOString();
+  const lifecycle = comment(summary({ has_any_findings: null, has_unresolved_findings: null }), { id: 901, created_at: after, updated_at: observedAt });
+  const lateAt = new Date(completed + 180000).toISOString();
+  const late = comment(receipt, { id: 902, created_at: lateAt, updated_at: lateAt });
+  const intermediateAt = new Date(completed + 30000).toISOString();
+  const intermediate = comment(summary().replaceAll(after, intermediateAt), { id: 905, created_at: intermediateAt, updated_at: intermediateAt });
+  const equal = comment(summary().replaceAll(after, observedAt), { id: 903, created_at: observedAt, updated_at: observedAt });
+  const freshAt = new Date(completed + 120000).toISOString();
+  const fresh = comment(summary().replaceAll(after, freshAt), { id: 904, created_at: freshAt, updated_at: freshAt });
+  for (const [comments, expected] of [[[lifecycle, late], false], [[lifecycle, late, intermediate], false], [[lifecycle, late, equal], false], [[lifecycle, late, fresh], true]]) {
+    const request = { id: 900, user: { login: "github-actions[bot]" }, created_at: requested,
+      body: createAiReviewRequestMarkerBody({ agent: "codex", headSha: head, requestId: "null-probe", sourceCommentId: 899, sourceCommentCreatedAt: requested, requestedAt: requested }) };
+    const outcome = await evaluateAiReviewEvidence({ repository: "example/repo", prNumber: 1, headSha: head, agent: "codex", request: async (path) => {
+      if (path === "/graphql") return { data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } } } };
+      if (path.endsWith("/pulls/1")) return { head: { sha: head } };
+      if (path.includes("/issues/1/comments")) return [request, ...comments];
+      return [];
+    } });
+    assert.equal(outcome === "pass", expected, outcome);
+  }
+});

@@ -143,3 +143,7 @@ Consolidated actual-native corrections passed mandatory preflight: 105 Python, 5
 - [x] Replace semantic harmlessness as completion authority with a closed native presentation contract; retain hostile and unknown-presentation regressions.
 - [x] Cover observed receipt endings, exact trailing task links and null lifecycle independence.
 - [ ] Repeat mandatory preflight and obtain genuine exact-head native review for the final contract.
+
+An unpaired completed null/null code lifecycle observed during the current request remains pending even if a later static receipt exists outside its completion window. A strictly newer closed canonical machine clear may retire that lifecycle. Same-window immutable exact-head receipt pairing remains valid; equal-time clears, edited receipts and late receipts cannot supply approval.
+
+Lifecycle retirement compares the newer canonical own completion against the lifecycle server observation/edit second. A canonical clear between the old completion and that observation, or in the same observed second, remains insufficient.
