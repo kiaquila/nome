@@ -121,3 +121,13 @@ Ordinary reference labels and footnote identifiers use the same Unicode case fol
 A companion warning trigger may be isolated for an own-section negative clock only when that companion has explicit typed findings. A false/false companion must retain its original canonical presentation. Raw HTML blocks following indented code retain literal Markdown warnings; complete tags cannot interrupt an existing paragraph.
 
 Authoritative completion clocks for the owning section must fall between the comment creation and edit observations, using GitHub whole-second precision. Structurally canonical carried companion rows may predate creation, but supply no approval or clearance authority for that companion section. Older or malformed clocks cannot approve or clear findings; negative observations fall back to edit time until a genuinely newer canonical section completion resolves them.
+
+An unpaired completed null/null code lifecycle observed during the current request remains pending even if a later static receipt exists outside its completion window. A strictly newer closed canonical machine clear may retire that lifecycle. Same-window immutable exact-head receipt pairing remains valid; equal-time clears, edited receipts and late receipts cannot supply approval.
+
+Unpaired lifecycle retirement requires a canonical own completion strictly after the server observation/edit second, so an old lifecycle completion cannot backdate a newer pending observation. Intermediate and equal-time canonical clears remain pending.
+
+A positive completed Security companion must have its canonical matching timestamp no later than server observation precision. Valid carried completion may predate comment creation; own-section clearance keeps its existing separate creation bound.
+
+Lifecycle retirement accepts a strictly newer canonical own Code clear independently of the companion Security verdict. Security findings retain their separate veto until their own genuinely newer canonical clearance. Completion upper bounds use the exclusive end of the server observed whole second, including fractional server timestamps; a timestamp in the following second cannot supply authority.
+
+A removable running companion requires an empty trailing table cell, matching completed-row structural validation. Extra-cell warnings and unknown text cannot disappear during historical own-section clearance; canonical running companions remain supported and a newer genuine canonical own clear may recover.

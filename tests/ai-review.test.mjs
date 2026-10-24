@@ -1065,3 +1065,108 @@ test('unknown presentation cannot backdate a negative before its observed edit',
   const fresh = comment(summary().replaceAll(after, '2026-10-15T13:00:00Z'), {created_at: '2026-10-15T13:00:00Z', updated_at: '2026-10-15T13:00:00Z'});
   assert.equal(await evaluate(evidenceApi({comments: [markerComment, old, fresh]})), 'pass');
 });
+
+
+test('late receipts cannot retire an unpaired null lifecycle', async () => {
+  const completed = Date.parse(after);
+  const observedAt = new Date(completed + 60000).toISOString();
+  const lifecycle = comment(summary({ has_any_findings: null, has_unresolved_findings: null }), { id: 901, created_at: after, updated_at: observedAt });
+  const lateAt = new Date(completed + 180000).toISOString();
+  const late = comment(receipt, { id: 902, created_at: lateAt, updated_at: lateAt });
+  const intermediateAt = new Date(completed + 30000).toISOString();
+  const intermediate = comment(summary().replaceAll(after, intermediateAt), { id: 905, created_at: intermediateAt, updated_at: intermediateAt });
+  const equal = comment(summary().replaceAll(after, observedAt), { id: 903, created_at: observedAt, updated_at: observedAt });
+  const freshAt = new Date(completed + 120000).toISOString();
+  const fresh = comment(summary().replaceAll(after, freshAt), { id: 904, created_at: freshAt, updated_at: freshAt });
+  for (const [comments, expected] of [[[lifecycle, late], false], [[lifecycle, late, intermediate], false], [[lifecycle, late, equal], false], [[lifecycle, late, fresh], true]]) {
+    const request = { id: 900, user: { login: "github-actions[bot]" }, created_at: requested,
+      body: createAiReviewRequestMarkerBody({ agent: "codex", headSha: head, requestId: "null-probe", sourceCommentId: 899, sourceCommentCreatedAt: requested, requestedAt: requested }) };
+    const outcome = await evaluateAiReviewEvidence({ repository: "example/repo", prNumber: 1, headSha: head, agent: "codex", request: async (path) => {
+      if (path === "/graphql") return { data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } } } };
+      if (path.endsWith("/pulls/1")) return { head: { sha: head } };
+      if (path.includes("/issues/1/comments")) return [request, ...comments];
+      return [];
+    } });
+    assert.equal(outcome === "pass", expected, outcome);
+  }
+});
+
+
+test('positive security companion is bounded by observation while carried completion remains valid', async () => {
+  const row = (time, display = time) => `| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="${time}">${display}</relative-time> | \`${head.slice(0, 7)}\` | Manual request |`;
+  const body = (status) => summary({}, completed) + '\n' + status;
+  for (const status of [row(after), row('2026-10-15T02:00:00.999Z'), row(before)]) {
+    assert.equal(await evaluate(evidenceApi({ comments: [markerComment, comment(body(status))] })), 'pass', status);
+  }
+  const fractionalObservation = '2026-10-15T02:00:00.500Z';
+  for (const section of ['code_review', 'security_review']) {
+    for (const [completion, expected] of [['2026-10-15T02:00:00.999Z', true], ['2026-10-15T02:00:01.100Z', false]]) {
+      let rendered = body(row(after));
+      if (section === 'code_review') rendered = rendered.replace(after, completion).replace(after, completion);
+      else rendered = body(row(completion));
+      const record = comment(rendered, { updated_at: fractionalObservation });
+      assert.equal(await evaluate(evidenceApi({ comments: [markerComment, record] })) === 'pass', expected, section + completion);
+    }
+  }
+  for (const status of [row('invalid', 'P1: Do not merge'), row('invalid'), row(after, 'P1: Do not merge'), row(after, before), row('2026-10-15T02:00:01Z'), row(later), row('2026-02-30T02:00:00Z'), row(after).replace(/ <relative-time[^>]*>[^<]*<\/relative-time>/, '')]) {
+    assert.notEqual(await evaluate(evidenceApi({ comments: [markerComment, comment(body(status))] })), 'pass', status);
+  }
+});
+
+
+test('null lifecycle retires through independent code clear while security retains its own veto', async () => {
+  const at = (hour) => `2026-10-15T0${hour}:00:00Z`;
+  const row = (time) => `| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="${time}">${time}</relative-time> | \`${head.slice(0, 7)}\` | Manual request |`;
+  const snapshot = (code, security, codeAt, secAt, created, updated, id) => comment(summary(code, security).replaceAll(after, codeAt) + (secAt ? '\n' + row(secAt) : ''), { id, created_at: created, updated_at: updated });
+  const lifecycle = snapshot({ has_any_findings: null, has_unresolved_findings: null }, absent, at(2), null, at(2), at(3), 920);
+  const codeClear = snapshot({}, { ...completed, has_any_findings: true, has_unresolved_findings: true }, at(4), at(4), at(4), at(4), 921);
+  const secClear = snapshot({}, completed, at(2), at(5), at(2), at(5), 922);
+  const current = comment(receipt, { id: 923, created_at: at(6), updated_at: at(6) });
+  const equalCode = snapshot({}, { ...completed, has_any_findings: true, has_unresolved_findings: true }, at(3), at(3), at(3), at(3), 924);
+  for (const [comments, expected] of [[[lifecycle, codeClear, current], false], [[lifecycle, secClear, current], false], [[lifecycle, equalCode, secClear, current], false], [[lifecycle, codeClear, secClear, current], true]]) {
+    const result = await evaluate(evidenceApi({ comments: [markerComment, ...comments] })); assert.equal(result === 'pass', expected, result);
+  }
+});
+
+
+test('running companion rows cannot erase a nonempty trailing cell during historical clear', async () => {
+  const at = (hour) => `2026-10-15T${hour}:00:00Z`;
+  const clean = { commit_sha: head, has_any_findings: false, has_unresolved_findings: false, status: 'completed' };
+  const repeatedAt = at('10');
+  const repeated = comment(createAiReviewRequestMarkerBody({ agent: 'codex', headSha: head, requestId: 'running-row', sourceCommentId: '950', sourceCommentCreatedAt: repeatedAt, requestedAt: repeatedAt }), { id: 950, user: { login: 'github-actions[bot]' }, created_at: repeatedAt, updated_at: repeatedAt });
+  const finding = { ...clean, has_any_findings: true, has_unresolved_findings: true };
+  const snapshot = (code, security, time) => {
+    const completed = `<relative-time datetime="${time}">${time}</relative-time>`;
+    let body = summary(code, security).replaceAll(after, time) + `\n| 🔒 **Security Review** | ${security.status === 'completed' ? '✅ **Completed**' : '🔄 **Running** since'} ${completed} | \`${head.slice(0, 7)}\` | Manual request |`;
+    if (code.status !== 'completed') body = body.split('\n').map(line => line.includes('**Code Review**') ? line.replace('✅ **Completed**', '🔄 **Running** since') : line).join('\n');
+    return body;
+  };
+  for (const kind of ['code_review', 'security_review']) for (const status of ['running', 'in_progress']) {
+    const other = kind === 'code_review' ? 'security_review' : 'code_review';
+    const oldState = { code_review: clean, security_review: clean, [kind]: finding };
+    const clearState = { code_review: clean, security_review: clean, [other]: { ...clean, status } };
+    const old = comment(snapshot(oldState.code_review, oldState.security_review, at('08')), { id: 960, created_at: at('08'), updated_at: at('08') });
+    const current = comment(receipt, { id: 962, created_at: at('11'), updated_at: at('11') });
+    for (const suffix of ['', ' P1: Do not merge', ' Uncatalogued presentation.']) {
+      const rendered = snapshot(clearState.code_review, clearState.security_review, at('09')).split('\n').map(line => line.includes('**' + (other === 'code_review' ? 'Code' : 'Security') + ' Review**') ? line + suffix : line).join('\n');
+      const candidate = comment(rendered, { id: 961, created_at: at('09'), updated_at: at('09') });
+      const result = await evaluate(evidenceApi({ comments: [repeated, old, candidate, current] }));
+      assert.equal(result === 'pass', suffix === '', kind + status + suffix);
+      if (!suffix) {
+        for (const [runningAt, expected] of [['2026-10-15T09:00:00.999Z', true], ['2026-10-15T09:00:01.000Z', false]]) {
+          const body = rendered.split('\n').map(line => line.includes('**' + (other === 'code_review' ? 'Code' : 'Security') + ' Review**') ? line.replaceAll(at('09'), runningAt) : line).join('\n');
+          const fractional = { ...candidate, body, updated_at: '2026-10-15T09:00:00.999Z' };
+          const boundary = await evaluate(evidenceApi({ comments: [repeated, old, fractional, current] })); assert.equal(boundary === 'pass', expected, kind + status + runningAt);
+        }
+      }
+      if (suffix) {
+        const equal = comment(snapshot(clean, clean, at('08')), { id: 963, created_at: at('08'), updated_at: at('08') });
+        assert.notEqual(await evaluate(evidenceApi({ comments: [repeated, old, candidate, current, equal] })), 'pass');
+        const recoveredAt = '2026-10-15T09:30:00Z';
+        const recovered = comment(snapshot(clean, clean, recoveredAt), { id: 964, created_at: recoveredAt, updated_at: recoveredAt });
+        const outcome = await evaluate(evidenceApi({ comments: [repeated, old, candidate, current, recovered] }));
+        assert.equal(outcome, 'pass');
+      }
+    }
+  }
+});

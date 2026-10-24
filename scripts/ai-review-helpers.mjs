@@ -1063,7 +1063,7 @@ function codeCompletionTime(comment) {
   const match = rows[0].match(/\| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \|/);
   const value = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
   const edited = Date.parse(comment?.updated_at || comment?.created_at || "");
-  return Number.isFinite(value) && Number.isFinite(edited) && Math.floor(value / 1000) >= Math.floor(Date.parse(comment.created_at || "") / 1000) && value <= edited + 999 ? match[1] : null;
+  return Number.isFinite(value) && Number.isFinite(edited) && Math.floor(value / 1000) >= Math.floor(Date.parse(comment.created_at || "") / 1000) && value < (Math.floor(edited / 1000) + 1) * 1000 ? match[1] : null;
 }
 
 export function verdictTime(comment, result, headSha = null, config = {}) {
@@ -1214,6 +1214,10 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
     // Additional native rendered content may contain findings; require its
     // explicit verdict to agree, rather than trusting a heading or Completed.
     if (!renderedSummaryAgrees(rendered, state, headSha, requestMarker)) return canonicalTypedRowsAgree(comment, state, headSha) ? "neutral" : "pending";
+    // A carried Security companion can predate this snapshot, but cannot
+    // complete after the actual server observation of the positive evidence.
+    if (!absent && !Number.isFinite(sectionCompletionBucket(
+        { ...comment, created_at: "1970-01-01T00:00:00Z", updated_at: comment.updated_at || comment.created_at }, "security_review", headSha))) return "pending";
     return codeCompletionTime(comment) ? "pass" : "pending";
   }
 
@@ -1269,7 +1273,30 @@ function hasPairedLifecycleReceipt(comment, comments, headSha, requestMarker, co
   });
 }
 
+
+// A neutral lifecycle has no approval to order against a later static reply.
+// Retire an unpaired current-request lifecycle only with a newer closed machine clear.
+function hasUnpairedNullLifecycle(comments, headSha, requestMarker, config) {
+  const requested = Date.parse(requestMarker?.sourceCommentCreatedAt || requestMarker?.requestedAt || requestMarker?.commentCreatedAt || "");
+  return comments.some((lifecycle) => {
+    const code = validatedTypedState(lifecycle)?.code_review;
+    if (code?.has_any_findings !== null || code?.has_unresolved_findings !== null ||
+        Date.parse(lifecycle.updated_at || lifecycle.created_at || "") < requested ||
+        classifyCodexSummaryComment(lifecycle, headSha, requestMarker, config) !== "neutral" ||
+        hasPairedLifecycleReceipt(lifecycle, comments, headSha, requestMarker, config)) return false;
+    const observed = Math.floor(Date.parse(lifecycle.updated_at || lifecycle.created_at || "") / 1000);
+    return !comments.some((clear) => {
+      const state = validatedTypedState(clear);
+      return state?.code_review.commit_sha === headSha &&
+        isTrustedReviewLogin(clear.user?.login, "codex", config) &&
+        canonicalSectionClear(clear, state, "code_review", headSha, config) &&
+        sectionCompletionBucket(clear, "code_review", headSha) > observed;
+    });
+  });
+}
+
 export function latestCodexSummaryResult(comments, headSha, requestMarker, config = {}, timeline = []) {
+  if (hasUnpairedNullLifecycle(comments, headSha, requestMarker, config)) return "pending";
   return comments.map((comment) => {
     let result = classifyCodexSummaryComment(comment, headSha, requestMarker, config);
     const unrecognized = result === null;
@@ -1469,7 +1496,7 @@ function sectionCompletionBucket(comment, kind, headSha = null) {
   const updated = Date.parse(comment.updated_at || comment.created_at || "");
   return Number.isFinite(value) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(match[1]) &&
     new Date(value).toISOString().slice(0, 19) === match[1].slice(0, 19) &&
-    Math.floor(value / 1000) >= Math.floor(Date.parse(comment.created_at || "") / 1000) && value <= updated + 999 ? Math.floor(value / 1000) : NaN;
+    Math.floor(value / 1000) >= Math.floor(Date.parse(comment.created_at || "") / 1000) && value < (Math.floor(updated / 1000) + 1) * 1000 ? Math.floor(value / 1000) : NaN;
 }
 
 
@@ -1553,7 +1580,7 @@ function removableCompanionRow(comment, review, kind, row) {
   if (!review?.commit_sha) return false;
   const cells = row.split("|").map((cell) => cell.trim());
   const label = kind === "security_review" ? /^(?:🛡️|🔒) \*\*Security Review\*\*$/ : /^📝 \*\*Code Review\*\*$/;
-  if (cells.length !== 6 || !label.test(cells[1]) || cells[3] !== "`" + review.commit_sha.slice(0, 7) + "`" ||
+  if (cells.length !== 6 || cells[5] !== "" || !label.test(cells[1]) || cells[3] !== "`" + review.commit_sha.slice(0, 7) + "`" ||
       !["Manual request", "Automatic review", "PR opened"].includes(cells[4])) return false;
   if (review.status === "completed") return /^✅ \*\*Completed\*\* /.test(cells[2]) &&
     Number.isFinite(sectionCompletionBucket({ ...comment, created_at: "1970-01-01T00:00:00Z", updated_at: comment.updated_at || comment.created_at }, kind, review.commit_sha));
@@ -1562,7 +1589,7 @@ function removableCompanionRow(comment, review, kind, row) {
   const time = match && match[1] === match[2] ? Date.parse(match[1]) : NaN;
   return Number.isFinite(time) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(match[1]) &&
     new Date(time).toISOString().slice(0, 19) === match[1].slice(0, 19) &&
-    time <= Date.parse(comment.updated_at || comment.created_at || "") + 999;
+    time < (Math.floor(Date.parse(comment.updated_at || comment.created_at || "") / 1000) + 1) * 1000;
 }
 
 
