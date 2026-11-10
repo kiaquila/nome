@@ -14,6 +14,9 @@
 
 Treat the outer details block as presentation only after exact structural
 validation; keep the typed state and canonical table as the verdict authority.
+Historical single-section clearance normalizes only the internal projected
+wrapper to Completed; the original whole-comment wrapper remains strictly
+validated against its typed status.
 
 ### Dead Ends
 

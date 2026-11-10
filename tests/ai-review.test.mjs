@@ -657,6 +657,20 @@ test('security clearance is independent of stale code completion and orders its 
 });
 
 
+test('details wrapper preserves independent security clearance while code review runs', async () => {
+  const securityRow = (time) => '\n| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="' + time + '">' + time + '</relative-time> | `2667f79` | Manual request |';
+  const securityFinding = { ...completed, has_any_findings: true, has_unresolved_findings: true };
+  const historical = comment(summary({}, securityFinding).replaceAll(after, before) + securityRow(before), { created_at: before, updated_at: before });
+  const running = { ...completed, has_any_findings: null, has_unresolved_findings: null, status: 'running' };
+  const rendered = (summary(running, completed).replaceAll(after, later) + securityRow(later)).split('\n').map((line) =>
+    line.includes('📝 **Code Review**') ? line.replace('✅ **Completed**', '🔄 **Running** since') : line
+  ).join('\n');
+  const clear = comment(wrapSummaryDetails(rendered, '🔄 Running'), { created_at: later, updated_at: later });
+  const current = comment(receipt, { created_at: '2026-10-15T04:00:00Z', updated_at: '2026-10-15T04:00:00Z' });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, historical, clear, current] })), 'pass');
+});
+
+
 test('historical canonical resolution survives a repeated request', async () => {
   const oldTime = '2026-10-14T23:00:00Z', clearTime = '2026-10-15T00:30:00Z';
   const old = comment(summary({ has_any_findings: true }).replaceAll(after, oldTime), { created_at: oldTime, updated_at: oldTime });

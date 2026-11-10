@@ -1544,7 +1544,9 @@ function canonicalSectionClear(comment, state, kind, headSha, config, validateCo
     .split(/\r?\n/).filter((line) => !line.startsWith("|") ||
       (!line.includes("**Code Review**") && !line.includes("**Security Review**")) || line.includes(target))
     .map((line) => line.includes(target) && kind === "security_review"
-      ? line.replace(/(?:🛡️|🔒) \*\*Security Review\*\*/, "📝 **Code Review**") : line).join("\n");
+      ? line.replace(/(?:🛡️|🔒) \*\*Security Review\*\*/, "📝 **Code Review**") : line).join("\n")
+    .replace("<summary><strong>Codex Review Summary</strong>: 🔄 Running</summary>",
+      "<summary><strong>Codex Review Summary</strong>: ✅ Completed</summary>");
   return classifyCodexSummaryComment({ ...comment, body: projected }, headSha,
     { requestedAt: "1970-01-01T00:00:00Z" }, config) === "pass";
 }
