@@ -12,6 +12,13 @@ Review should focus first on risks that matter for a private assistant:
 AI review evidence is advisory until branch protection is configured to require
 it. Human ownership remains the final merge gate.
 
+Native structured summaries may use either the legacy `## Codex Review Summary`
+heading or the exact service-owned outer details header
+`<summary><strong>Codex Review Summary</strong>: …</summary>`. The details form
+must close at the end of the comment and its visible Running/Completed status
+must agree with typed state. Both forms retain the same strict state, table,
+timestamp, request, finding-history, and unresolved-thread checks.
+
 ## Native presentation authority
 
 Completion clocks and finding clearance use a closed native body: the strict

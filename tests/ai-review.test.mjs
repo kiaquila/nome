@@ -32,6 +32,10 @@ const summary = (code = {}, security = absent, rendered = `This comment shows th
 | Review | Status | Commit | Review trigger |
 | --- | --- | --- | --- |
 | 📝 **Code Review** | ✅ **Completed** <relative-time datetime="2026-10-15T02:00:00Z">2026-10-15T02:00:00Z</relative-time> | \`${head.slice(0, 7)}\` | Manual request |`) => `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: { ...completed, ...code }, security_review: security })} -->\n\n## Codex Review Summary\n${rendered}`;
+const wrapSummaryDetails = (body, status = "✅ Completed") => body.replace(
+  "\n\n## Codex Review Summary\n",
+  `\n\n<details>\n<summary><strong>Codex Review Summary</strong>: ${status}</summary>\n\n`
+) + "\n\n</details>";
 const classify = (body, extra = {}) => classifyCodexSummaryComment(comment(body, extra), head, marker);
 
 test("real receipt, legacy, curly apostrophe and official footer pass", () => {
@@ -92,6 +96,19 @@ test("observed native summary table agrees with the structured verdict, includin
 Codex reacts with 👀 while any review is running, comments if it has suggestions, and reacts with 👍 once all reviews finish with no findings.
 </details>`;
   assert.equal(classify(summary({}, absent, rendered), { created_at: before }), "pass");
+  const wrapped = wrapSummaryDetails(summary({}, absent, rendered));
+  assert.equal(classify(wrapped, { created_at: before }), "pass");
+  assert.equal(latestCodexSummaryResult([comment(receipt), comment(wrapped, { created_at: before })], head, marker), "pass");
+  assert.equal(latestCodexSummaryResult([
+    comment(wrapSummaryDetails(summary({ has_any_findings: true }, absent, rendered)), { created_at: before })
+  ], head, marker), "fail");
+  for (const malformed of [
+    wrapSummaryDetails(summary({}, absent, rendered), "🔄 Running"),
+    wrapped.replace("<strong>Codex Review Summary</strong>", "Codex Review Summary"),
+    wrapped.replace(/\n\n<\/details>$/, ""),
+    wrapped + "\nApproved",
+    wrapped.replace(/\n\n<\/details>$/, "\nP1: unresolved issue\n\n</details>")
+  ]) assert.notEqual(classify(malformed, { created_at: before }), "pass");
   assert.equal(classify(summary({ has_any_findings: null, has_unresolved_findings: null }, absent, rendered)), "neutral");
   assert.equal(latestCodexSummaryResult([comment(summary({}, absent, rendered), { created_at: before, updated_at: after })], head, marker), "pass");
   assert.notEqual(classify(summary({}, absent, rendered.replace("**Completed**", "**Running**"))), "pass");
@@ -637,6 +654,20 @@ test('security clearance is independent of stale code completion and orders its 
   const staleCode = { ...clean, created_at: before, body: clean.body.replaceAll(after, before) };
   const historical = { ...old, created_at: before, body: old.body.replaceAll(after, before) };
   assert.equal(await evaluate(evidenceApi({ comments: [markerComment, historical, staleCode, comment(receipt, { created_at: '2026-10-15T02:45:00Z', updated_at: '2026-10-15T02:45:00Z' })] })), 'pass');
+});
+
+
+test('details wrapper preserves independent security clearance while code review runs', async () => {
+  const securityRow = (time) => '\n| 🔒 **Security Review** | ✅ **Completed** <relative-time datetime="' + time + '">' + time + '</relative-time> | `2667f79` | Manual request |';
+  const securityFinding = { ...completed, has_any_findings: true, has_unresolved_findings: true };
+  const historical = comment(summary({}, securityFinding).replaceAll(after, before) + securityRow(before), { created_at: before, updated_at: before });
+  const running = { ...completed, has_any_findings: null, has_unresolved_findings: null, status: 'running' };
+  const rendered = (summary(running, completed).replaceAll(after, later) + securityRow(later)).split('\n').map((line) =>
+    line.includes('📝 **Code Review**') ? line.replace('✅ **Completed**', '🔄 **Running** since') : line
+  ).join('\n');
+  const clear = comment(wrapSummaryDetails(rendered, '🔄 Running'), { created_at: later, updated_at: later });
+  const current = comment(receipt, { created_at: '2026-10-15T04:00:00Z', updated_at: '2026-10-15T04:00:00Z' });
+  assert.equal(await evaluate(evidenceApi({ comments: [markerComment, historical, clear, current] })), 'pass');
 });
 
 

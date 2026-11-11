@@ -1085,6 +1085,24 @@ export function verdictTime(comment, result, headSha = null, config = {}) {
 const receiptMarker = "<!-- codex-review-receipt:v1 -->";
 const summaryMarker = "<!-- codex-pull-request-review-summary -->";
 
+function parseCodexSummaryEnvelope(body) {
+  const text = String(body || "").trim();
+  const prefix = text.match(/^<!-- codex-pull-request-review-summary -->\s*<!-- codex-review-state:v1 (\{[^\n]+\}) -->\s*/);
+  if (!prefix) return null;
+  const presentation = text.slice(prefix[0].length);
+  const heading = presentation.match(/^## Codex Review Summary(?:\s|$)/);
+  if (heading) {
+    return { stateJson: prefix[1], rendered: presentation.slice(heading[0].length).trim(), wrapperStatus: null };
+  }
+  const details = presentation.match(/^<details>\s*<summary><strong>Codex Review Summary<\/strong>: (🔄 Running|✅ Completed)<\/summary>\s*([\s\S]*?)\s*<\/details>$/);
+  if (!details) return null;
+  return {
+    stateJson: prefix[1],
+    rendered: details[2].trim(),
+    wrapperStatus: details[1] === "✅ Completed" ? "completed" : "running"
+  };
+}
+
 export function isCodexReviewSignal(body) {
   const text = String(body || "").trim().replace(/^(?:<!--(?! codex-)[\s\S]*?-->\s*)+/gi, "");
   return /^Codex Review:/i.test(text) ||
@@ -1178,26 +1196,28 @@ export function classifyCodexSummaryComment(comment, headSha, requestMarker = nu
   if (!isCodexReviewSignal(body)) return null;
 
   if (body.startsWith(summaryMarker) || body.startsWith("<!-- codex-review-state:")) {
-    const match = body.match(/^<!-- codex-pull-request-review-summary -->\s*<!-- codex-review-state:v1 (\{[^\n]+\}) -->\s*## Codex Review Summary(?:\s|$)/);
-    if (!match || codexProtocolMarkerCount(body) !== 2) return "fail";
-    if (match[1].includes("\\")) return "fail";
+    const envelope = parseCodexSummaryEnvelope(body);
+    if (!envelope || codexProtocolMarkerCount(body) !== 2) return "fail";
+    if (envelope.stateJson.includes("\\")) return "fail";
     let state;
-    try { state = JSON.parse(match[1]); } catch { return "fail"; }
+    try { state = JSON.parse(envelope.stateJson); } catch { return "fail"; }
     // JSON.parse accepts duplicate keys; count every schema key before parsing
     // can discard an earlier conflicting verdict.
     for (const [key, count] of [["code_review", 1], ["security_review", 1],
       ["commit_sha", 2], ["has_any_findings", 2], ["has_unresolved_findings", 2], ["status", 2]]) {
-      if ((match[1].match(new RegExp(`"${key}"\\s*:`, "g")) || []).length !== count) return "fail";
+      if ((envelope.stateJson.match(new RegExp(`"${key}"\\s*:`, "g")) || []).length !== count) return "fail";
     }
     if (!exactKeys(state, ["code_review", "security_review"]) ||
         !reviewStateIsValid(state.code_review) || !reviewStateIsValid(state.security_review)) return "fail";
     const code = state.code_review;
     if (code.commit_sha !== headSha) return null;
+    if (envelope.wrapperStatus === "completed" && code.status !== "completed") return "fail";
+    if (envelope.wrapperStatus === "running" && !["queued", "running", "in_progress"].includes(code.status)) return "fail";
     if (code.has_any_findings === true ||
         code.has_unresolved_findings === true) return "fail";
     const security = state.security_review;
     const absent = Object.values(security).every((value) => value === null);
-    const rendered = body.slice(match[0].length).trim();
+    const rendered = envelope.rendered;
     // Raw independent warnings retain their veto. Closed presentation, never
     // semantic harmlessness, is still required for any completion authority.
     if (!renderedSummaryAgrees(rendered, state, headSha, {requestedAt: "1970-01-01T00:00:00Z"}) &&
@@ -1456,7 +1476,7 @@ export function hasIndependentSecurityWarning(comment, headSha, config = {}) {
 function leadingNegativeState(comment) {
   if (hasIndentedCodexEnvelope(comment?.body)) return null;
   const body = String(comment?.body || "").trim().replace(/<!--(?! codex-)[\s\S]*?-->/gi, "").trim();
-  const match = body.match(/^(?:<!-- codex-pull-request-review-summary -->\s*)?<!-- codex-review-state:v1 .*? -->\s*## Codex Review Summary(?:\r?\n|$)/s);
+  const match = body.match(/^(?:<!-- codex-pull-request-review-summary -->\s*)?<!-- codex-review-state:v1 .*? -->\s*(?:## Codex Review Summary(?:\r?\n|$)|<details>\s*<summary><strong>Codex Review Summary<\/strong>: (?:🔄 Running|✅ Completed)<\/summary>(?:\r?\n|$))/s);
   return match ? validatedTypedState({ ...comment, body: match[0] }) : null;
 }
 
@@ -1504,8 +1524,8 @@ function canonicalTypedRowsAgree(comment, state, headSha) {
   if (!state || Object.values(state).some((review) => review.status !== null &&
       (review.status !== "completed" || review.commit_sha !== headSha))) return false;
   const body = String(comment.body || "").trim();
-  const match = body.match(/^<!-- codex-pull-request-review-summary -->\s*<!-- codex-review-state:v1 (\{[^\n]+\}) -->\s*## Codex Review Summary(?:\s|$)/);
-  return !!match && renderedSummaryAgrees(body.slice(match[0].length).trim(), state, headSha,
+  const envelope = parseCodexSummaryEnvelope(body);
+  return !!envelope && envelope.wrapperStatus !== "running" && renderedSummaryAgrees(envelope.rendered, state, headSha,
     { requestedAt: "1970-01-01T00:00:00Z" });
 }
 
@@ -1524,7 +1544,9 @@ function canonicalSectionClear(comment, state, kind, headSha, config, validateCo
     .split(/\r?\n/).filter((line) => !line.startsWith("|") ||
       (!line.includes("**Code Review**") && !line.includes("**Security Review**")) || line.includes(target))
     .map((line) => line.includes(target) && kind === "security_review"
-      ? line.replace(/(?:🛡️|🔒) \*\*Security Review\*\*/, "📝 **Code Review**") : line).join("\n");
+      ? line.replace(/(?:🛡️|🔒) \*\*Security Review\*\*/, "📝 **Code Review**") : line).join("\n")
+    .replace("<summary><strong>Codex Review Summary</strong>: 🔄 Running</summary>",
+      "<summary><strong>Codex Review Summary</strong>: ✅ Completed</summary>");
   return classifyCodexSummaryComment({ ...comment, body: projected }, headSha,
     { requestedAt: "1970-01-01T00:00:00Z" }, config) === "pass";
 }
